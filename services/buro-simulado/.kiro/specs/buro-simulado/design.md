@@ -141,6 +141,22 @@ sequenceDiagram
 - **Contenerización:** Dockerfile existente (`node:20-alpine`, `EXPOSE 8091`) integrable a `docker-compose`.
 - **Contrato OpenAPI 3.0** en `contracts/buro-simulado.yaml` como fuente de verdad; `Prism` puede levantar un mock a partir de ese YAML.
 
+## Estructura por capas (actualización posterior, steering `structure.md`)
+
+Después de implementar este diseño, el servicio se reorganizó según la estructura estándar de todos los servicios (patrón Repository). El comportamiento observable y los contratos no cambian. Los componentes descritos en la sección siguiente se reparten así:
+
+| Antes | Ahora |
+|---|---|
+| `src/scenarioState.js` (estado singleton del módulo) | `src/models/escenario.js` + `src/repositories/escenarioRepository.interface.js` (puerto `obtener`/`guardar`) + `src/repositories/memoriaEscenarioRepository.js` (implementación) |
+| `src/routes/score.js` (validación, escenario, latencia, cálculo, respuesta) | `middlewares/validarIdentificacion.js` → `controllers/scoreController.js` → `services/scoreService.js` (CAIDO / LATENCIA_ALTA) → `utils/scoringDeterministico.js`; respuesta en `dtos/scoreResponseDto.js`; rutas en `routes/scoreRoutes.js` |
+| `src/routes/admin.js` | `controllers/adminController.js` → `services/escenarioService.js`; rutas en `routes/adminRoutes.js` |
+| Lectura de `LATENCIA_MS` en `score.js` y de la ruta del contrato en `index.js` | `config/buroConfig.js` |
+| Swagger UI y `/openapi.yaml` en `index.js` | `utils/contratoOpenApi.js` + `routes/docsRoutes.js` (el contrato se lee de `contracts/spec5-buro-simulado.yaml`, sin copia en el servicio) |
+| Manejador de errores en `index.js` | `middlewares/manejadorErrores.js` + `utils/errorBuro.js` |
+| `index.js` (todo) | `app.js` (`crearApp(deps)`) + `index.js` (raíz de composición: elige `memoriaEscenarioRepository`) |
+
+El escenario sigue siendo una única instancia en memoria por proceso (Req. 5.5-5.6): ahora es la instancia de `memoriaEscenarioRepository` que `index.js` inyecta en la app, y el servicio depende solo de la interfaz.
+
 ## Components and Interfaces
 
 ### `src/index.js` — Bootstrap de la aplicación

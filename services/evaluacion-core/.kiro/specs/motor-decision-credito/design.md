@@ -73,6 +73,24 @@ graph TD
   AP --> AUD
 ```
 
+### Estructura por capas (actualización posterior, steering `structure.md`)
+
+Después de implementar este diseño, el steering pasó a exigir la misma estructura estándar en todos los servicios (patrón Repository), y `evaluacion-core` conserva además `domain/`. El comportamiento, los contratos y el dominio no cambian. Los componentes descritos abajo se reparten así:
+
+| Antes | Ahora |
+|---|---|
+| `routes/evaluar.js` | `routes/evaluacionRoutes.js` (cablea) + `controllers/evaluacionController.js` + `middlewares/validarSolicitudCore.js` |
+| `application/evaluarCreditoUseCase.js` | `services/evaluacionCreditoService.js` (`crearEvaluacionCreditoService(deps)`) |
+| `domain/motorReglas.js`, `domain/reglas/*` | Sin cambios (`domain/` puro: no conoce HTTP ni repositorios) |
+| `infrastructure/adapters/repositorioInternoAdapter.js` | `repositories/historialClienteRepository.interface.js` (puerto) + `repositories/httpHistorialClienteRepository.js` (implementación) → modelo `HistorialCliente` |
+| `infrastructure/adapters/buroExternoAdapter.js` (breaker a nivel de módulo) | `repositories/datosBuroRepository.interface.js` (puerto) + `repositories/httpDatosBuroRepository.js` (implementación con Circuit Breaker + fallback, un breaker por instancia) → modelo `DatosBuro` |
+| `infrastructure/auditoriaPublisher.js` | `clients/auditoriaPublisher.js` (`crearAuditoriaPublisher`) + `dtos/registroAuditoriaDto.js` |
+| Construcción de `DecisionCore` en el caso de uso | `dtos/decisionCoreDto.js` |
+| Manejador de errores en `index.js` | `middlewares/manejadorErrores.js` + `utils/errorCore.js` |
+| `index.js` (todo) | `config/coreConfig.js` + `app.js` (`crearApp(deps)`) + `index.js` (raíz de composición: elige las implementaciones HTTP) |
+
+El caso de uso depende solo de las interfaces `HistorialClienteRepository` y `DatosBuroRepository`: esto concreta el patrón Repository/Adapter del steering ("el core nunca conoce el esquema real de la base de datos, solo interfaces") y permite probar la orquestación con dobles (Properties 1, 3, 7 y 8).
+
 ### Contratos como fuente de verdad
 
 Cada request/response se ajusta a los YAML de `contracts/` (referenciados por ruta relativa, nunca copiados dentro del servicio):

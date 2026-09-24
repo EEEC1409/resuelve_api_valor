@@ -21,6 +21,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resuelve_user -d resuelve_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - resuelve-network
 
@@ -118,6 +123,9 @@ services:
       PORT: 8091
       NODE_ENV: production
       ESCENARIO_INICIAL: NORMAL
+      CONTRATO_OPENAPI_PATH: /contracts/spec5-buro-simulado.yaml
+    volumes:
+      - ./contracts:/contracts:ro
     networks:
       - resuelve-network
 
@@ -138,8 +146,10 @@ services:
       DB_USER: resuelve_user
       DB_PASSWORD: resuelve_pass
       DB_NAME: resuelve_db
+      SEED_AL_INICIAR: "true"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
       - resuelve-network
 

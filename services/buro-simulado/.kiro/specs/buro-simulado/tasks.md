@@ -168,6 +168,28 @@ Lenguaje de implementación: **JavaScript (Node.js 20 LTS)**, según el diseño 
 - [x] 11. Checkpoint final — Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
+- [x] 12. Reestructurar por capas con patrón Repository (steering `structure.md`)
+  - [x] 12.1 Extraer el estado de escenario a un repositorio con interfaz
+    - `src/models/escenario.js`: `ESCENARIOS_VALIDOS`, `esEscenarioValido`, `normalizarEscenario`
+    - `src/repositories/escenarioRepository.interface.js` (`obtener` / `guardar` + `asegurarEscenarioRepository`) y `memoriaEscenarioRepository.js` (reemplaza `src/scenarioState.js`; inicialización total con `escenarioInicial`)
+    - _Requisitos: 5.1, 5.2, 5.3, 5.4, 5.5, 5.6_
+
+  - [x] 12.2 Separar capas HTTP y de aplicación sin cambiar el comportamiento observable
+    - `config/buroConfig.js` (`LATENCIA_MS`, `ESCENARIO_INICIAL`, `CONTRATO_OPENAPI_PATH`); `utils/scoringDeterministico.js`, `utils/errorBuro.js`, `utils/contratoOpenApi.js`
+    - `services/scoreService.js` y `services/escenarioService.js`; `controllers/scoreController.js` y `adminController.js`; `dtos/scoreResponseDto.js`
+    - `middlewares/validarIdentificacion.js` y `manejadorErrores.js`; `routes/scoreRoutes.js`, `adminRoutes.js` y `docsRoutes.js`
+    - `app.js` (`crearApp(deps)`) e `index.js` como raíz de composición
+    - _Requisitos: 1.1, 1.7, 2.5, 3.2, 4.1, 5.4, 6.1, 7.1_
+
+  - [x]* 12.3 Migrar las pruebas a la nueva estructura
+    - Las suites de rutas fijan el escenario vía `escenarioRepository` exportado por `index.js`
+    - Property 9 se prueba directamente sobre `crearMemoriaEscenarioRepository`; se añaden pruebas de la interfaz
+    - `manejadorErrores.test.js` usa el middleware real en lugar de una réplica
+    - _Requisitos: 5.5, 5.6, 7.1_
+
+- [x] 13. Checkpoint — Reestructuración
+  - Ensure all tests pass, ask the user if questions arise.
+
 ## Notes
 
 - Las tareas marcadas con `*` son opcionales (pruebas) y pueden omitirse para un MVP más rápido, aunque se recomienda ejecutarlas por la naturaleza determinística y de resiliencia del servicio.
@@ -187,7 +209,10 @@ Lenguaje de implementación: **JavaScript (Node.js 20 LTS)**, según el diseño 
     { "id": 2, "tasks": ["2.3", "2.4", "4.1", "5.1", "6.1"] },
     { "id": 3, "tasks": ["4.2", "4.3", "4.4", "5.2", "6.2", "6.3", "6.4", "6.5", "8.1", "8.2", "8.3", "8.4", "8.5", "9.1"] },
     { "id": 4, "tasks": ["10.1"] },
-    { "id": 5, "tasks": ["10.2"] }
+    { "id": 5, "tasks": ["10.2"] },
+    { "id": 6, "tasks": ["12.1"] },
+    { "id": 7, "tasks": ["12.2"] },
+    { "id": 8, "tasks": ["12.3"] }
   ]
 }
 ```

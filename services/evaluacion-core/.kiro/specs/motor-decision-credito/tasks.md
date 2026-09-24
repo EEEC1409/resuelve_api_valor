@@ -32,7 +32,7 @@ Todas las reglas hoy devuelven `null` (placeholders); este plan las reemplaza po
     - Manejar timeout y error de forma explícita, nunca propagar excepción al llamador
     - _Requirements: 7.1, 7.5_
 
-  - [ ]* 2.2 Escribir pruebas unitarias de normalización del adapter
+  - [x]* 2.2 Escribir pruebas unitarias de normalización del adapter
     - Verificar mapeo de `ScoreResponse` a `Datos_Buro` y forma del fallback (score nulo, estado INDISPONIBLE)
     - _Requirements: 7.1_
 
@@ -43,7 +43,7 @@ Todas las reglas hoy devuelven `null` (placeholders); este plan las reemplaza po
     - Devolver `null` si `tieneMoraVigente === false` o indeterminado
     - _Requirements: 2.1, 2.2, 2.5_
 
-  - [ ]* 3.2 Escribir property test P1 (mora rechaza sin tocar el buró)
+  - [x]* 3.2 Escribir property test P1 (mora rechaza sin tocar el buró)
     - **Property 1: Mora vigente rechaza sin tocar el buró**
     - **Validates: Requirements 2.1, 2.3, 2.4**
     - `fc.assert(..., { numRuns: 100 })`; mock del adapter que cuenta invocaciones (cero esperadas)
@@ -59,7 +59,7 @@ Todas las reglas hoy devuelven `null` (placeholders); este plan las reemplaza po
     - Devolver `null` si config inválida, historial ausente/mora indeterminada, o relación cuota/ingreso dentro del límite
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 5.1, 5.4, 5.5_
 
-  - [ ]* 4.2 Escribir property test P3 (monto bajo con historial limpio aprueba sin buró)
+  - [x]* 4.2 Escribir property test P3 (monto bajo con historial limpio aprueba sin buró)
     - **Property 3: Monto bajo con historial limpio aprueba sin buró**
     - **Validates: Requirements 5.1, 5.2**
     - `numRuns: 100`; mock del adapter que verifica cero invocaciones
@@ -144,19 +144,19 @@ Todas las reglas hoy devuelven `null` (placeholders); este plan las reemplaza po
     - Publicar auditoría fire-and-forget no bloqueante (invocar también en fallback del buró)
     - _Requirements: 2.4, 5.2, 6.1, 6.5, 7.3, 8.1, 8.4_
 
-  - [ ]* 10.2 Escribir property test P8 (`consultaBuroRealizada` sii se invocó el adapter)
+  - [x]* 10.2 Escribir property test P8 (`consultaBuroRealizada` sii se invocó el adapter)
     - **Property 8: `consultaBuroRealizada` es verdadero si y solo si se invocó el adapter del buró**
     - **Validates: Requirements 6.1, 6.5, 2.4, 5.2**
     - `numRuns: 100`; mock del adapter que cuenta invocaciones
     - Comentario: `// Feature: motor-decision-credito, Property 8: ...`
 
-  - [ ]* 10.3 Escribir property test P7 (fallo/timeout del buró nunca produce excepción no controlada)
+  - [x]* 10.3 Escribir property test P7 (fallo/timeout del buró nunca produce excepción no controlada)
     - **Property 7: Fallo o timeout del buró nunca produce excepción no controlada**
     - **Validates: Requirements 7.1, 7.2, 7.3, 7.4, 7.5**
     - `numRuns: 100`; mock del adapter que fuerza fallback
     - Comentario: `// Feature: motor-decision-credito, Property 7: ...`
 
-  - [ ]* 10.4 Escribir prueba unitaria de formato de `idEvaluacion`
+  - [x]* 10.4 Escribir prueba unitaria de formato de `idEvaluacion`
     - Verificar que `idEvaluacion` cumple el formato UUID
     - _Requirements: 6.1_
 
@@ -165,7 +165,7 @@ Todas las reglas hoy devuelven `null` (placeholders); este plan las reemplaza po
     - Actualizar `package.json` (el script `test: jest` ya existe)
     - _Requirements: 6.2_
 
-  - [ ]* 11.2 Escribir pruebas de integración de `POST /evaluar` con Supertest
+  - [x]* 11.2 Escribir pruebas de integración de `POST /evaluar` con Supertest
     - Validar `DecisionCore` del contrato spec4 (campos y enums)
     - Auditoría fire-and-forget: con el publicador fallando, la respuesta sigue 200 con la misma `DecisionCore`
     - Circuit Breaker: simular `CAIDO`/`LATENCIA_ALTA` del buró y verificar fallback y continuidad
@@ -179,6 +179,29 @@ Todas las reglas hoy devuelven `null` (placeholders); este plan las reemplaza po
   - Medir `p95 < 500 ms`, `95% < 3 s`, `error < 1%` y proporción de `consultaBuroRealizada = false >= 60%`
   - Vive fuera de `services/evaluacion-core`; opcional respecto a esta feature
   - _Requirements: 6.1_
+
+- [x] 14. Reestructurar por capas con patrón Repository (steering `structure.md`)
+  - [x] 14.1 Adaptar la estructura estándar conservando `domain/`
+    - `domain/` (motor + reglas) y `config/reglasConfig.js` sin cambios
+    - `application/evaluarCreditoUseCase.js` → `services/evaluacionCreditoService.js` (`crearEvaluacionCreditoService(deps)`, con dependencias inyectadas)
+    - `routes/evaluar.js` → `routes/evaluacionRoutes.js` + `controllers/evaluacionController.js`; `index.js` → `app.js` (`crearApp(deps)`) + `index.js` (raíz de composición)
+    - `config/coreConfig.js` con URLs, timeouts y opciones del Circuit Breaker
+    - _Requirements: 6.1, 6.5, 8.1_
+
+  - [x] 14.2 Convertir los adapters en repositorios con interfaz
+    - `repositories/historialClienteRepository.interface.js` + `httpHistorialClienteRepository.js` (antes `repositorioInternoAdapter`; 404 → `null`)
+    - `repositories/datosBuroRepository.interface.js` + `httpDatosBuroRepository.js` (antes `buroExternoAdapter`; Circuit Breaker opossum + fallback dentro de la implementación, un breaker por instancia)
+    - Modelos inmutables `models/historialCliente.js` y `models/datosBuro.js` (`DatosBuro.indisponible()`)
+    - `infrastructure/auditoriaPublisher.js` → `clients/auditoriaPublisher.js` (`crearAuditoriaPublisher`) + `dtos/registroAuditoriaDto.js`; `dtos/decisionCoreDto.js`
+    - _Requirements: 7.1, 7.5, 8.2, 8.3_
+
+  - [x] 14.3 Validación temprana de `SolicitudCore` y manejador de errores como middlewares
+    - `middlewares/validarSolicitudCore.js`: 400 `INVALID_IDENTIFICACION` / `INVALID_REQUEST` antes de tocar el dominio (prevista en "Error Handling" del diseño y en spec4, hasta ahora no implementada)
+    - `middlewares/manejadorErrores.js` + `utils/errorCore.js`; JSON mal formado → 400
+    - _Requirements: 6.1_
+
+- [x] 15. Checkpoint — Reestructuración
+  - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
 
@@ -199,7 +222,8 @@ Todas las reglas hoy devuelven `null` (placeholders); este plan las reemplaza po
     { "id": 2, "tasks": ["3.2", "4.2", "4.3", "5.2", "5.3", "6.2", "6.3", "8.1"] },
     { "id": 3, "tasks": ["8.2", "8.3", "10.1"] },
     { "id": 4, "tasks": ["10.2", "10.3", "10.4", "11.2"] },
-    { "id": 5, "tasks": ["13"] }
+    { "id": 5, "tasks": ["13"] },
+    { "id": 6, "tasks": ["14.1", "14.2", "14.3"] }
   ]
 }
 ```

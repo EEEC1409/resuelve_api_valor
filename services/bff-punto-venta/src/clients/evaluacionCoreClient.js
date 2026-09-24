@@ -1,32 +1,33 @@
 const axios = require("axios");
-
-const EVALUACION_CORE_URL = process.env.EVALUACION_CORE_URL || "http://evaluacion-core:8090";
+const bffConfig = require("../config/bffConfig");
 
 const coreHttpClient = axios.create({
-  baseURL: EVALUACION_CORE_URL,
-  timeout: 5000,
+  baseURL: bffConfig.coreUrl,
+  timeout: bffConfig.coreTimeoutMs,
   headers: {
     "Content-Type": "application/json"
   }
 });
 
 /**
- * Envia solicitud de credito a evaluacion-core
- * @param {Object} solicitud
+ * Envia la SolicitudCore a evaluacion-core (POST /evaluar).
+ * Sin reintentos: la evaluacion no es idempotente (RF-05 crit. 7). Los errores
+ * de axios se propagan tal cual; los traduce el servicio.
+ * @param {Object} solicitudCore
+ * @returns {Promise<Object>} DecisionCore
  */
-async function solicitarEvaluacion(solicitud) {
-  // Placeholder para llamada HTTP a /evaluar
-  const response = await coreHttpClient.post("/evaluar", solicitud);
+async function solicitarEvaluacion(solicitudCore) {
+  const response = await coreHttpClient.post("/evaluar", solicitudCore);
   return response.data;
 }
 
 /**
- * Obtiene evaluacion por ID de evaluacion-core
+ * Obtiene una evaluacion previa de evaluacion-core (GET /evaluaciones/:id).
  * @param {string} id
+ * @returns {Promise<Object>} DecisionCore
  */
 async function obtenerEvaluacionPorId(id) {
-  // Placeholder para llamada HTTP a /evaluaciones/:id
-  const response = await coreHttpClient.get(`/evaluaciones/${id}`);
+  const response = await coreHttpClient.get(`/evaluaciones/${encodeURIComponent(id)}`);
   return response.data;
 }
 

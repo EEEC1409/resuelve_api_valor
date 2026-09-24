@@ -1,0 +1,143 @@
+openapi: 3.0.3
+info:
+  title: Contrato Frontend Tiendas - Resuelve
+  version: "1.0.0"
+  description: Contrato que consume el Frontend Tiendas (punto de venta). Mapea 1:1 al endpoint publico del API Gateway (Spec 1); util para mockear mientras el backend se construye.
+servers:
+  - url: https://api.resuelve.com/v1
+paths:
+  /evaluaciones-credito:
+    post:
+      summary: Envia la solicitud de credito capturada en el formulario
+      operationId: crearEvaluacion
+      security:
+        - OAuth2: [evaluaciones:escribir]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudFrontend'
+            example:
+              identificacion: "0102030405"
+              montoSolicitado: 1200.00
+              plazoMeses: 12
+              tiendaId: "CENTRO-SUR-03"
+      responses:
+        '200':
+          description: Decision emitida, lista para mostrar en pantalla
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionFrontend'
+              examples:
+                aprobado:
+                  summary: Escenario aprobado
+                  value:
+                    idEvaluacion: "7f2a91cd-aab1-4e2e-9c3a-111111111111"
+                    decision: APROBADO
+                    motivo: "Cumple reglas de score y capacidad de pago"
+                    consultaBuroRealizada: false
+                    fecha: "2026-09-22T21:04:00-05:00"
+                revision:
+                  summary: Escenario revision manual
+                  value:
+                    idEvaluacion: "7f2a91cd-aab1-4e2e-9c3a-222222222222"
+                    decision: REVISION_MANUAL
+                    motivo: "Score limitrofe, requiere validacion de un analista"
+                    consultaBuroRealizada: true
+                    fecha: "2026-09-22T21:04:00-05:00"
+                rechazado:
+                  summary: Escenario rechazado
+                  value:
+                    idEvaluacion: "7f2a91cd-aab1-4e2e-9c3a-333333333333"
+                    decision: RECHAZADO
+                    motivo: "Mora vigente en historial interno"
+                    consultaBuroRealizada: true
+                    fecha: "2026-09-22T21:04:00-05:00"
+        '400':
+          description: Datos del formulario invalidos (ej. identificacion vacia o monto negativo)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Token invalido o ausente
+        '429':
+          description: Limite de tasa excedido, reintentar tras unos segundos
+  /evaluaciones-credito/{id}:
+    get:
+      summary: Consulta el estado de una evaluacion previa (ej. al reabrir la pantalla de resultado)
+      operationId: obtenerEvaluacion
+      security:
+        - OAuth2: [evaluaciones:leer]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Decision almacenada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DecisionFrontend'
+        '404':
+          description: Evaluacion no encontrada
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.resuelve.com/oauth/token
+          scopes:
+            evaluaciones:escribir: Crear evaluaciones
+            evaluaciones:leer: Consultar evaluaciones
+  schemas:
+    SolicitudFrontend:
+      type: object
+      required: [identificacion, montoSolicitado, plazoMeses]
+      properties:
+        identificacion:
+          type: string
+          description: Cedula o RUC capturado en el campo de texto del formulario
+          example: "0102030405"
+        montoSolicitado:
+          type: number
+          format: decimal
+          minimum: 0
+          example: 1200.00
+        plazoMeses:
+          type: integer
+          enum: [6, 12, 18, 24]
+          description: Debe coincidir con las opciones del selector de plazo en el formulario
+        tiendaId:
+          type: string
+          description: Identificador de la tienda/caja que origina la solicitud (trazabilidad)
+    DecisionFrontend:
+      type: object
+      properties:
+        idEvaluacion:
+          type: string
+          format: uuid
+          description: Se muestra en la pantalla de resultado como 'ID evaluacion'
+        decision:
+          type: string
+          enum: [APROBADO, RECHAZADO, REVISION_MANUAL]
+          description: Determina el icono, color y titulo de la pantalla de resultado
+        motivo:
+          type: string
+          description: Texto que puede usarse como mensaje explicativo bajo el titulo
+        consultaBuroRealizada:
+          type: boolean
+          description: Controla el texto de la fila 'Consulta a buro externo' en el resultado
+        fecha:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      properties:
+        codigo: { type: string, example: "IDENTIFICACION_INVALIDA" }
+        mensaje: { type: string, example: "La identificacion ingresada no es valida" }

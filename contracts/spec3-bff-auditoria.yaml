@@ -1,0 +1,82 @@
+openapi: 3.0.3
+info:
+  title: BFF Auditoria - Resuelve
+  version: "1.0.0"
+  description: Backend for Frontend para el panel interno de auditoria. Consume al Servicio de Auditoria.
+servers:
+  - url: http://bff-auditoria.internal/v1
+paths:
+  /evaluaciones:
+    get:
+      summary: Lista evaluaciones con filtros y paginacion, con el detalle completo para analistas
+      operationId: listarEvaluacionesAuditoria
+      parameters:
+        - name: estado
+          in: query
+          schema: { type: string, enum: [APROBADO, RECHAZADO, REVISION_MANUAL] }
+        - name: fechaDesde
+          in: query
+          schema: { type: string, format: date }
+        - name: fechaHasta
+          in: query
+          schema: { type: string, format: date }
+        - name: tiendaId
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Pagina de evaluaciones con detalle completo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaDetalleAuditoria'
+  /evaluaciones/{id}/detalle:
+    get:
+      summary: Detalle completo de una evaluacion, incluyendo si se consulto o no el buro externo
+      operationId: obtenerDetalleAuditoria
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Detalle completo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DetalleAuditoria'
+components:
+  schemas:
+    DetalleAuditoria:
+      type: object
+      properties:
+        idEvaluacion: { type: string, format: uuid }
+        decision: { type: string, enum: [APROBADO, RECHAZADO, REVISION_MANUAL] }
+        motivo: { type: string }
+        fecha: { type: string, format: date-time }
+        tiendaId: { type: string }
+        consultaBuroRealizada:
+          type: boolean
+          description: Si fue necesario consultar el buro externo o se resolvio solo con reglas internas
+        scoreBuro:
+          type: integer
+          nullable: true
+        reglasAplicadas:
+          type: array
+          items: { type: string }
+    PaginaDetalleAuditoria:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DetalleAuditoria'

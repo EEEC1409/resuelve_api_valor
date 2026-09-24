@@ -1,0 +1,62 @@
+openapi: 3.0.3
+info:
+  title: BFF Punto de Venta - Resuelve
+  version: "1.0.0"
+  description: Backend for Frontend para el flujo de aprobacion de credito en tienda. Consume al Servicio de Evaluacion (core).
+servers:
+  - url: http://bff-pos.internal/v1
+paths:
+  /evaluaciones-credito:
+    post:
+      summary: Crea una evaluacion de credito para el punto de venta
+      operationId: crearEvaluacionPos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudEvaluacionPos'
+      responses:
+        '200':
+          description: Resultado simplificado para mostrar en caja
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoPos'
+  /evaluaciones-credito/{id}:
+    get:
+      summary: Consulta rapida de estado para mostrar en pantalla de caja
+      operationId: obtenerEstadoPos
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Estado simplificado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResultadoPos'
+components:
+  schemas:
+    SolicitudEvaluacionPos:
+      type: object
+      required: [identificacion, montoSolicitado, plazoMeses, tiendaId]
+      properties:
+        identificacion: { type: string }
+        montoSolicitado: { type: number }
+        plazoMeses: { type: integer }
+        tiendaId:
+          type: string
+          description: Identifica la tienda que origina la venta (para trazabilidad)
+    ResultadoPos:
+      type: object
+      description: Version reducida de la Decision del core, pensada para mostrarse en pantalla de caja en 1-2 lineas
+      properties:
+        idEvaluacion: { type: string, format: uuid }
+        aprobado: { type: boolean }
+        mensajeParaCliente:
+          type: string
+          description: Texto corto y humano, ej. "Credito aprobado" o "En revision, te contactaremos"

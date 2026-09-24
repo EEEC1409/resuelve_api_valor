@@ -1,0 +1,72 @@
+openapi: 3.0.3
+info:
+  title: Servicio de Auditoria - Resuelve
+  version: "1.0.0"
+  description: Registra y expone el historial de evaluaciones para trazabilidad y cumplimiento.
+servers:
+  - url: http://auditoria.internal/v1
+paths:
+  /registros:
+    post:
+      summary: Registra una nueva evaluacion (llamado por el core tras cada decision)
+      operationId: registrarAuditoria
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistroAuditoria'
+      responses:
+        '201':
+          description: Registro almacenado
+    get:
+      summary: Lista registros de auditoria con filtros (llamado por BFF Auditoria)
+      operationId: listarRegistros
+      parameters:
+        - name: estado
+          in: query
+          schema: { type: string, enum: [APROBADO, RECHAZADO, REVISION_MANUAL] }
+        - name: fechaDesde
+          in: query
+          schema: { type: string, format: date }
+        - name: fechaHasta
+          in: query
+          schema: { type: string, format: date }
+        - name: page
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Pagina de registros
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaRegistros'
+components:
+  schemas:
+    RegistroAuditoria:
+      type: object
+      required: [idEvaluacion, decision, fecha]
+      properties:
+        idEvaluacion: { type: string, format: uuid }
+        decision: { type: string, enum: [APROBADO, RECHAZADO, REVISION_MANUAL] }
+        motivo: { type: string }
+        fecha: { type: string, format: date-time }
+        tiendaId: { type: string }
+        consultaBuroRealizada: { type: boolean }
+        scoreBuro: { type: integer, nullable: true }
+        reglasAplicadas:
+          type: array
+          items: { type: string }
+    PaginaRegistros:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RegistroAuditoria'

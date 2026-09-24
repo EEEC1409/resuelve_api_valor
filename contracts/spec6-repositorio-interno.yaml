@@ -1,0 +1,38 @@
+openapi: 3.0.3
+info:
+  title: Repositorio Interno de Clientes - Resuelve
+  version: "1.0.0"
+  description: Expone el historial interno de productos y pagos del cliente. Desacopla al core del esquema real de base de datos.
+servers:
+  - url: http://repositorio-interno.internal/v1
+paths:
+  /clientes/{identificacion}/historial:
+    get:
+      summary: Obtiene el historial interno de un cliente
+      operationId: obtenerHistorialCliente
+      parameters:
+        - name: identificacion
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Historial encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorialCliente'
+        '404':
+          description: Cliente sin historial previo (cliente nuevo)
+components:
+  schemas:
+    HistorialCliente:
+      type: object
+      properties:
+        identificacion: { type: string }
+        tieneMoraVigente: { type: boolean }
+        creditosPrevios: { type: integer }
+        ingresosDeclarados: { type: number, nullable: true }
+        antiguedadMeses:
+          type: integer
+          description: Meses desde el primer registro del cliente en Resuelve

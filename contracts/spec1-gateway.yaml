@@ -1,0 +1,114 @@
+openapi: 3.0.3
+info:
+  title: API Gateway - Resuelve
+  version: "1.0.0"
+  description: Punto único de entrada para tiendas y aliados externos. Enruta hacia BFF Punto de Venta y BFF Auditoria.
+servers:
+  - url: https://api.resuelve.com/v1
+paths:
+  /evaluaciones-credito:
+    post:
+      summary: Solicita una evaluacion de credito (enruta a BFF Punto de Venta)
+      operationId: crearEvaluacion
+      security:
+        - OAuth2: [evaluaciones:escribir]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudEvaluacion'
+      responses:
+        '200':
+          description: Decision emitida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+        '401':
+          description: Token invalido o ausente
+        '429':
+          description: Limite de tasa excedido
+  /evaluaciones-credito/{id}:
+    get:
+      summary: Consulta el estado de una evaluacion (enruta a BFF Punto de Venta)
+      operationId: obtenerEvaluacion
+      security:
+        - OAuth2: [evaluaciones:leer]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Estado actual
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Decision'
+  /auditoria/evaluaciones:
+    get:
+      summary: Lista evaluaciones con filtros (enruta a BFF Auditoria, uso interno)
+      operationId: listarAuditoria
+      security:
+        - OAuth2: [auditoria:leer]
+      parameters:
+        - name: estado
+          in: query
+          schema: { type: string, enum: [APROBADO, RECHAZADO, REVISION_MANUAL] }
+        - name: fechaDesde
+          in: query
+          schema: { type: string, format: date }
+        - name: fechaHasta
+          in: query
+          schema: { type: string, format: date }
+        - name: page
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: size
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Pagina de resultados de auditoria
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaAuditoria'
+components:
+  securitySchemes:
+    OAuth2:
+      type: oauth2
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.resuelve.com/oauth/token
+          scopes:
+            evaluaciones:escribir: Crear evaluaciones
+            evaluaciones:leer: Consultar evaluaciones
+            auditoria:leer: Consultar auditoria interna
+  schemas:
+    SolicitudEvaluacion:
+      type: object
+      required: [identificacion, montoSolicitado, plazoMeses]
+      properties:
+        identificacion: { type: string, example: "0102030405" }
+        montoSolicitado: { type: number, format: decimal }
+        plazoMeses: { type: integer }
+        referenciaPartner: { type: string }
+    Decision:
+      type: object
+      properties:
+        idEvaluacion: { type: string, format: uuid }
+        decision: { type: string, enum: [APROBADO, RECHAZADO, REVISION_MANUAL] }
+        motivo: { type: string }
+        fecha: { type: string, format: date-time }
+    PaginaAuditoria:
+      type: object
+      properties:
+        total: { type: integer }
+        page: { type: integer }
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Decision'

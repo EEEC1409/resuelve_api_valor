@@ -1,0 +1,59 @@
+version: '3.8'
+
+# Configuracion de desarrollo local con recarga en caliente (nodemon)
+services:
+  gateway:
+    command: npm run dev
+    volumes:
+      - ./services/gateway:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  bff-punto-venta:
+    command: npm run dev
+    volumes:
+      - ./services/bff-punto-venta:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  bff-auditoria:
+    command: npm run dev
+    volumes:
+      - ./services/bff-auditoria:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  evaluacion-core:
+    command: npm run dev
+    volumes:
+      - ./services/evaluacion-core:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  buro-simulado:
+    command: npm run dev
+    volumes:
+      - ./services/buro-simulado:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  repositorio-interno:
+    command: npm run dev
+    volumes:
+      - ./services/repositorio-interno:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+
+  auditoria:
+    command: npm run dev
+    volumes:
+      - ./services/auditoria:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development

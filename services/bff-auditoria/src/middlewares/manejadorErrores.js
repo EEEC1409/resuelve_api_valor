@@ -1,18 +1,16 @@
+const { ErrorBffAuditoria, traducirErrorAuditoria } = require("../utils/errorBffAuditoria");
+
 /**
- * Manejador central de errores del BFF Auditoria.
- *
- * Conserva el formato actual. Pendiente para el spec de este servicio (igual
- * que en bff-punto-venta): dejar de exponer `err.message` de axios y
- * `err.response.data` del Servicio de Auditoria.
+ * Manejador central: ErrorRespuestaAuditoria { error: { code, message, reintentable } }
+ * sin mensajes de axios ni el cuerpo del Servicio de Auditoria (Req 4.5). El
+ * detalle tecnico de los 5xx queda solo en el log.
  */
 function manejadorErrores(err, req, res, next) {
-  console.error("[BFF Auditoria Error]:", err.message);
-  res.status(err.status || 500).json({
-    error: {
-      message: err.message || "Error interno en BFF Auditoria",
-      details: err.response ? err.response.data : null
-    }
-  });
+  const error = err instanceof ErrorBffAuditoria ? err : traducirErrorAuditoria(err);
+  if (error.status >= 500) {
+    console.error(`[BFF Auditoria Error] ${error.code}:`, err && err.message);
+  }
+  return res.status(error.status).json(error.toRespuesta());
 }
 
 module.exports = {

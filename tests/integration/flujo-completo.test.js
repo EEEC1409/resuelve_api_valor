@@ -1,70 +1,109 @@
 /**
  * Test de Integracion End-to-End: Flujo Completo del Sistema Resuelve
- * 
- * Este test esta diseñado como placeholder para ejecutarse contra el ambiente
- * levantado con Docker Compose (API Gateway en http://localhost:8080).
- * 
- * Flujo evaluado:
- * 1. Health checks de los servicios
- * 2. Solicitud de credito aprobada enviada al API Gateway
- * 3. Orquestacion Gateway -> BFF POS -> Evaluacion Core -> Repositorio Interno / Buro Simulado -> Auditoria
- * 4. Verificacion de consulta del registro de auditoria via BFF Auditoria
+ *
+ * Se ejecuta contra el ambiente levantado con Docker Compose, SIEMPRE a traves
+ * del API Gateway y su contrato publico /v1 (spec1 v1.1.0).
+ *
+ * Flujo:
+ *   1. Health del Gateway
+ *   2. POST /v1/evaluaciones-credito -> BFF POS -> core -> repositorio / buro -> auditoria
+ *   3. GET /v1/evaluaciones-credito/{id} (reconsulta desde la cache del BFF POS)
+ *   4. GET /v1/auditoria/evaluaciones y /detalle (BFF Auditoria -> auditoria)
+ *
+ * Autenticacion: hoy el Gateway corre con AUTH_HABILITADA=false. Cuando se
+ * active OAuth2, definir GATEWAY_TOKEN (scopes evaluaciones:escribir,
+ * evaluaciones:leer y auditoria:leer) y se enviara como Bearer.
+ *
+ * Si el Gateway no responde, las pruebas avisan y se omiten (no fallan).
  */
 
 const axios = require("axios");
 
 const GATEWAY_URL = process.env.GATEWAY_URL || "http://localhost:8080";
-const BFF_AUDITORIA_URL = process.env.BFF_AUDITORIA_URL || "http://localhost:8082";
+const TOKEN = process.env.GATEWAY_TOKEN;
 
-describe("Flujo Completo de Evaluacion de Credito (End-to-End)", () => {
-  beforeAll(async () => {
-    // Esperar a que el Gateway responda al health check antes de ejecutar pruebas
-    console.log(`[E2E] Probando conectividad contra Gateway en: ${GATEWAY_URL}`);
+const cliente = axios.create({
+  baseURL: GATEWAY_URL,
+  timeout: 10000,
+  headers: TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {},
+  validateStatus: () => true
+});
+
+let disponible = false;
+let idEvaluacion = null;
+
+beforeAll(async () => {
+  try {
+    const health = await cliente.get("/health");
+    disponible = health.status === 200;
+  } catch (error) {
+    disponible = false;
+  }
+  if (!disponible) {
+    console.warn(`[E2E Skip] Gateway no disponible en ${GATEWAY_URL}. Levantar con: docker compose up -d --build`);
+  }
+});
+
+describe("Flujo completo por el API Gateway (/v1)", () => {
+  test("1. Health del Gateway", async () => {
+    if (!disponible) return;
+    const res = await cliente.get("/health");
+    expect(res.data.status).toBe("UP");
   });
 
-  test("1. Health check del API Gateway debe responder UP", async () => {
-    try {
-      const response = await axios.get(`${GATEWAY_URL}/health`);
-      expect(response.status).toBe(200);
-      expect(response.data.status).toBe("UP");
-    } catch (error) {
-      console.warn("[E2E Skip] Asegurate de tener los contenedores levantados con docker-compose up");
-      // Placeholder: no fallar si docker aun no esta corriendo en local
-    }
-  });
-
-  test("2. Solicitud de credito enviada al Gateway debe retornar decision de credito", async () => {
-    const solicitudEjemplo = {
-      identificacion: "1720000002", // Cliente con buen historial
-      montoSolicitado: 1200.00,
+  test("2. POST /v1/evaluaciones-credito devuelve ResultadoPos (cliente con buen historial, monto bajo)", async () => {
+    if (!disponible) return;
+    const res = await cliente.post("/v1/evaluaciones-credito", {
+      identificacion: "1720000002",
+      montoSolicitado: 450,
       plazoMeses: 12,
       tiendaId: "TIENDA-CENTRO-01"
-    };
+    });
 
-    try {
-      const response = await axios.post(`${GATEWAY_URL}/evaluaciones-credito`, solicitudEjemplo, {
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer token-de-prueba-jwt"
-        }
-      });
-
-      expect([200, 201]).toContain(response.status);
-      expect(response.data).toHaveProperty("decision");
-      expect(response.data).toHaveProperty("idEvaluacion");
-      console.log("[E2E Result]:", response.data);
-    } catch (error) {
-      console.warn("[E2E Skip] Docker compose aun no levantado:", error.message);
-    }
+    expect(res.status).toBe(200);
+    expect(res.headers["api-version"]).toBe("v1");
+    expect(res.data).toEqual({
+      idEvaluacion: expect.any(String),
+      aprobado: true,
+      mensajeParaCliente: "Crédito aprobado"
+    });
+    idEvaluacion = res.data.idEvaluacion;
   });
 
-  test("3. BFF Auditoria debe registrar y listar las evaluaciones procesadas", async () => {
-    try {
-      const response = await axios.get(`${BFF_AUDITORIA_URL}/evaluaciones?page=1&limit=10`);
-      expect(response.status).toBe(200);
-      expect(response.data).toHaveProperty("datos");
-    } catch (error) {
-      console.warn("[E2E Skip] Docker compose aun no levantado:", error.message);
+  test("3. GET /v1/evaluaciones-credito/{id} reconsulta el mismo resultado", async () => {
+    if (!disponible || !idEvaluacion) return;
+    const res = await cliente.get(`/v1/evaluaciones-credito/${idEvaluacion}`);
+    expect(res.status).toBe(200);
+    expect(res.data.idEvaluacion).toBe(idEvaluacion);
+  });
+
+  test("4. La decision queda auditada y se consulta por el Gateway", async () => {
+    if (!disponible || !idEvaluacion) return;
+    // La auditoria es fire-and-forget desde el core: se espera a que llegue.
+    let detalle;
+    for (let intento = 0; intento < 10; intento++) {
+      detalle = await cliente.get(`/v1/auditoria/evaluaciones/${idEvaluacion}/detalle`);
+      if (detalle.status === 200) break;
+      await new Promise((r) => setTimeout(r, 300));
     }
+
+    expect(detalle.status).toBe(200);
+    expect(detalle.data).toMatchObject({
+      idEvaluacion,
+      decision: "APROBADO",
+      consultaBuroRealizada: false,
+      reglasAplicadas: ["REGLA_MORA_VIGENTE", "REGLA_CAPACIDAD_PAGO"]
+    });
+
+    const listado = await cliente.get("/v1/auditoria/evaluaciones?page=0&size=5&tiendaId=TIENDA-CENTRO-01");
+    expect(listado.status).toBe(200);
+    expect(listado.data.items.map((i) => i.idEvaluacion)).toContain(idEvaluacion);
+  });
+
+  test("5. Rutas sin version responden 404", async () => {
+    if (!disponible) return;
+    const res = await cliente.post("/evaluaciones-credito", {});
+    expect(res.status).toBe(404);
+    expect(res.data.error.code).toBe("RUTA_NO_ENCONTRADA");
   });
 });

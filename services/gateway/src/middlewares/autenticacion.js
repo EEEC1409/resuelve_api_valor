@@ -1,36 +1,37 @@
+const { expressjwt } = require("express-jwt");
+const jwksRsa = require("jwks-rsa");
+
 /**
- * Middleware de autenticacion JWT - placeholder.
+ * Autenticacion OAuth2 (Req 1): valida el Token_Acceso emitido por Keycloak
+ * (flujo client_credentials) con express-jwt + jwks-rsa (steering tech.md).
  *
- * En produccion debe validar el token con JWKS (express-jwt + jwks-rsa,
- * steering tech.md). Hoy: rutas publicas exentas; en `production` exige la
- * cabecera Authorization; en cualquier caso inyecta un usuario simulado.
+ * - Solo RS256: descarta `alg: none` y la confusion de algoritmos con HS256.
+ * - Verifica firma (JWKS), iss, aud y exp.
+ * - JWKS con cache (10 min) y limite de consultas: validar no requiere red por peticion.
+ * - El payload verificado queda en req.auth.
  *
- * @param {{ nodeEnv?: string }} opciones
+ * @param {{ jwtIssuer: string, jwtAudience: string, jwksUri: string, jwksTimeoutMs: number,
+ *           obtenerClaveFirma?: Function }} opciones  `obtenerClaveFirma` es inyectable en pruebas.
  */
-function crearAutenticacion({ nodeEnv }) {
-  const RUTAS_PUBLICAS = ["/health", "/docs"];
+function crearAutenticacion({ jwtIssuer, jwtAudience, jwksUri, jwksTimeoutMs, obtenerClaveFirma }) {
+  const secret =
+    obtenerClaveFirma ||
+    jwksRsa.expressJwtSecret({
+      jwksUri,
+      cache: true,
+      cacheMaxAge: 10 * 60 * 1000,
+      rateLimit: true,
+      jwksRequestsPerMinute: 10,
+      timeout: jwksTimeoutMs
+    });
 
-  return function autenticacion(req, res, next) {
-    if (RUTAS_PUBLICAS.includes(req.path)) {
-      return next();
-    }
-
-    if (!req.headers.authorization && nodeEnv === "production") {
-      return res.status(401).json({
-        error: {
-          message: "Cabecera Authorization requerida (Bearer token)",
-          code: "UNAUTHORIZED"
-        }
-      });
-    }
-
-    req.user = {
-      sub: "user-placeholder",
-      roles: ["tienda:pos", "auditor"]
-    };
-
-    return next();
-  };
+  return expressjwt({
+    secret,
+    algorithms: ["RS256"],
+    issuer: jwtIssuer,
+    audience: jwtAudience,
+    requestProperty: "auth"
+  });
 }
 
 module.exports = {

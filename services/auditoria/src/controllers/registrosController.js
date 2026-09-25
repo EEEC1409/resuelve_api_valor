@@ -1,41 +1,51 @@
-const { crearRegistroAuditoria } = require("../models/registroAuditoria");
-const { toRegistroCreadoDto, toPaginaRegistrosDto } = require("../dtos/registrosDto");
+const RegistroAuditoria = require("../models/registroAuditoria");
+const { toRegistroAuditoriaDto } = require("../dtos/registroAuditoriaDto");
+const { toPaginaRegistrosDto } = require("../dtos/listadoRegistrosDto");
+const { registroNoEncontrado } = require("../utils/errorAuditoria");
 
 /**
  * Controlador de registros de auditoria. Depende de la INTERFAZ
- * RegistroAuditoriaRepository, no del almacenamiento concreto.
+ * RegistroAuditoriaRepository, no de MongoDB.
  *
  * @param {{ registroRepository: import("../repositories/registroAuditoriaRepository.interface").RegistroAuditoriaRepository,
  *           ahora?: () => Date }} deps
  */
 function crearRegistrosController({ registroRepository, ahora = () => new Date() }) {
-  /** POST /registros: guarda un evento de auditoria de evaluacion de credito. */
+  /** POST /registros (requiere validarRegistroAuditoria) — 201 */
   async function crear(req, res, next) {
     try {
-      const registro = crearRegistroAuditoria(req.body, ahora());
+      const registro = new RegistroAuditoria({ ...req.registro, registradoEn: ahora() });
       await registroRepository.guardar(registro);
-      return res.status(201).json(toRegistroCreadoDto(registro));
+      return res.status(201).json(toRegistroAuditoriaDto(registro));
     } catch (error) {
       return next(error);
     }
   }
 
-  /**
-   * GET /registros: consulta con filtro por decision y paginacion.
-   * (fechaDesde/fechaHasta se aceptan pero aun no filtran: pendiente del spec.)
-   */
+  /** GET /registros (requiere validarParametrosListado) — 200 pagina */
   async function listar(req, res, next) {
     try {
-      const { decision, page = 1, limit = 20 } = req.query;
-      const paginacion = { pagina: parseInt(page, 10), limite: parseInt(limit, 10) };
-      const resultado = await registroRepository.buscar({ decision, ...paginacion });
-      return res.status(200).json(toPaginaRegistrosDto(resultado, paginacion));
+      const resultado = await registroRepository.buscar(req.listado);
+      return res.status(200).json(toPaginaRegistrosDto(resultado, req.listado));
     } catch (error) {
       return next(error);
     }
   }
 
-  return { crear, listar };
+  /** GET /registros/:idEvaluacion (requiere validarIdEvaluacion) — 200 / 404 */
+  async function obtenerPorId(req, res, next) {
+    try {
+      const registro = await registroRepository.buscarPorId(req.idEvaluacion);
+      if (registro === null) {
+        throw registroNoEncontrado();
+      }
+      return res.status(200).json(toRegistroAuditoriaDto(registro));
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  return { crear, listar, obtenerPorId };
 }
 
 module.exports = {

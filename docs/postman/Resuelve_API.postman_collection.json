@@ -7,28 +7,90 @@
   },
   "item": [
     {
-      "name": "1. API Gateway (:8080)",
+      "name": "1. API Gateway (:8080) /v1",
       "item": [
         {
           "name": "Health Check",
           "request": {
             "method": "GET",
-            "url": "http://localhost:8080/health"
+            "url": "{{gatewayUrl}}/health"
           }
         },
         {
-          "name": "POST /evaluaciones-credito",
+          "name": "POST /v1/evaluaciones-credito",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cuerpo = pm.response.json();",
+                  "if (cuerpo.idEvaluacion) pm.collectionVariables.set(\"idEvaluacion\", cuerpo.idEvaluacion);",
+                  "pm.test(\"ResultadoPos\", () => pm.expect(cuerpo).to.have.keys([\"idEvaluacion\", \"aprobado\", \"mensajeParaCliente\"]));"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer dev-token" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{gatewayToken}}",
+                "description": "Opcional mientras AUTH_HABILITADA=false"
+              }
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"identificacion\": \"1720000002\",\n  \"montoSolicitado\": 1200,\n  \"plazoMeses\": 12,\n  \"tiendaId\": \"CENTRO-SUR-01\"\n}"
+              "raw": "{\n  \"identificacion\": \"1720000002\",\n  \"montoSolicitado\": 450,\n  \"plazoMeses\": 12,\n  \"tiendaId\": \"CENTRO-SUR-01\"\n}"
             },
-            "url": "http://localhost:8080/evaluaciones-credito"
+            "url": "{{gatewayUrl}}/v1/evaluaciones-credito"
+          }
+        },
+        {
+          "name": "GET /v1/evaluaciones-credito/{id}",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{gatewayToken}}",
+                "description": "Opcional mientras AUTH_HABILITADA=false"
+              }
+            ],
+            "url": "{{gatewayUrl}}/v1/evaluaciones-credito/{{idEvaluacion}}"
+          }
+        },
+        {
+          "name": "GET /v1/auditoria/evaluaciones",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{gatewayToken}}",
+                "description": "Opcional mientras AUTH_HABILITADA=false"
+              }
+            ],
+            "url": "{{gatewayUrl}}/v1/auditoria/evaluaciones?page=0&size=10"
+          }
+        },
+        {
+          "name": "GET /v1/auditoria/evaluaciones/{id}/detalle",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{gatewayToken}}",
+                "description": "Opcional mientras AUTH_HABILITADA=false"
+              }
+            ],
+            "url": "{{gatewayUrl}}/v1/auditoria/evaluaciones/{{idEvaluacion}}/detalle"
           }
         }
       ]
@@ -47,7 +109,12 @@
           "name": "POST /evaluaciones-credito",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"identificacion\": \"1720000002\",\n  \"montoSolicitado\": 800,\n  \"plazoMeses\": 6\n}"
@@ -64,7 +131,7 @@
           "name": "GET /evaluaciones",
           "request": {
             "method": "GET",
-            "url": "http://localhost:8082/evaluaciones?page=1&limit=10"
+            "url": "http://localhost:8082/evaluaciones?page=0&size=10"
           }
         }
       ]
@@ -76,7 +143,12 @@
           "name": "POST /evaluar",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"identificacion\": \"1720000002\",\n  \"montoSolicitado\": 1500,\n  \"plazoMeses\": 24\n}"
@@ -100,7 +172,12 @@
           "name": "POST /admin/escenario",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"escenario\": \"LATENCIA_ALTA\"\n}"
@@ -133,6 +210,21 @@
           }
         }
       ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "gatewayUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "gatewayToken",
+      "value": "",
+      "description": "Token OAuth2 client_credentials; vacio mientras AUTH_HABILITADA=false"
+    },
+    {
+      "key": "idEvaluacion",
+      "value": ""
     }
   ]
 }

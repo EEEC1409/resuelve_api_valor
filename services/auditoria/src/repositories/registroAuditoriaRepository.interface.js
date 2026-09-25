@@ -1,18 +1,27 @@
 /**
  * Puerto (interfaz) del repositorio de registros de auditoria.
  *
- * Controladores dependen SOLO de esta interfaz. Implementacion actual: en
- * memoria (memoriaRegistroAuditoriaRepository). La implementacion MongoDB
- * (mongoRegistroAuditoriaRepository) se agregara en el spec del servicio.
+ * Controladores dependen SOLO de esta interfaz. Implementaciones:
+ *   - mongoRegistroAuditoriaRepository (produccion, steering tech.md)
+ *   - memoriaRegistroAuditoriaRepository (pruebas, misma semantica)
+ *
+ * @typedef {Object} FiltrosListado
+ * @property {string} [estado]      decision exacta
+ * @property {string} [fechaDesde]  YYYY-MM-DD, dia UTC inclusive
+ * @property {string} [fechaHasta]  YYYY-MM-DD, dia UTC inclusive
+ * @property {string} [tiendaId]
  *
  * @typedef {Object} RegistroAuditoriaRepository
- * @property {(registro: Object) => Promise<void>} guardar
- *   Almacena un registro (inmutable) de auditoria.
- * @property {(criterios: { decision?: string, pagina: number, limite: number }) => Promise<{ total: number, datos: Object[] }>} buscar
- *   Devuelve la pagina solicitada y el total de registros que cumplen el filtro.
+ * @property {() => Promise<void>} inicializar
+ *   Prepara el almacen (indices). Idempotente.
+ * @property {(registro: import("../models/registroAuditoria")) => Promise<void>} guardar
+ *   Persiste el registro. Lanza ErrorAuditoria 409 REGISTRO_DUPLICADO si el idEvaluacion ya existe.
+ * @property {(idEvaluacion: string) => Promise<import("../models/registroAuditoria")|null>} buscarPorId
+ * @property {(criterios: { filtros: FiltrosListado, page: number, size: number }) => Promise<{ total: number, items: import("../models/registroAuditoria")[] }>} buscar
+ *   Orden fecha descendente, idEvaluacion ascendente. `page` base 0.
  */
 
-const METODOS_REGISTRO_AUDITORIA_REPOSITORY = Object.freeze(["guardar", "buscar"]);
+const METODOS_REGISTRO_AUDITORIA_REPOSITORY = Object.freeze(["inicializar", "guardar", "buscarPorId", "buscar"]);
 
 /**
  * Verifica en tiempo de ejecucion que `implementacion` cumpla la interfaz.

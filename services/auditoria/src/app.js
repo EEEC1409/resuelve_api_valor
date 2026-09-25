@@ -7,9 +7,11 @@ const { manejadorErrores } = require("./middlewares/manejadorErrores");
 
 /**
  * Construye la aplicacion a partir de sus dependencias (inyeccion).
- * @param {{ registroRepository: Object, ahora?: () => Date }} deps
+ *
+ * @param {{ registroRepository: Object, verificarAlmacen: () => Promise<boolean>,
+ *           config: { paginaTamanoDefecto: number, paginaTamanoMaximo: number }, ahora?: () => Date }} deps
  */
-function crearApp({ registroRepository, ahora }) {
+function crearApp({ registroRepository, verificarAlmacen, config, ahora }) {
   const app = express();
   const registrosController = crearRegistrosController({
     registroRepository: asegurarRegistroAuditoriaRepository(registroRepository),
@@ -19,11 +21,18 @@ function crearApp({ registroRepository, ahora }) {
   app.use(cors());
   app.use(express.json());
 
-  app.get("/health", (req, res) => {
-    res.status(200).json({ status: "UP", service: "auditoria", timestamp: new Date().toISOString() });
+  // Siempre 200 mientras el proceso vive; `almacen` indica si MongoDB responde (Req 5.7).
+  app.get("/health", async (req, res) => {
+    const disponible = await verificarAlmacen().catch(() => false);
+    res.status(200).json({
+      status: "UP",
+      service: "auditoria",
+      almacen: disponible ? "UP" : "DOWN",
+      timestamp: new Date().toISOString()
+    });
   });
 
-  app.use("/registros", crearRegistrosRoutes(registrosController));
+  app.use("/registros", crearRegistrosRoutes(registrosController, config));
   app.use(manejadorErrores);
 
   return app;

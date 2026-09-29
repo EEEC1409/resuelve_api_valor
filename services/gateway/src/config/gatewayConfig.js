@@ -7,7 +7,8 @@ const gatewayConfig = {
   bffPosUrl: process.env.BFF_POS_URL || "http://bff-punto-venta:8081",
   bffAuditoriaUrl: process.env.BFF_AUDITORIA_URL || "http://bff-auditoria:8082",
   rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "60000", 10),
-  rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX || "100", 10)
+  rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX || "100", 10),
+  jwtSecret: process.env.JWT_SECRET || "supersecretkey_resuelve_jwt"
 };
 
 module.exports = gatewayConfig;

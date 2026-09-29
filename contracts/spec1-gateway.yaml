@@ -2,11 +2,41 @@ openapi: 3.0.3
 info:
   title: API Gateway - Resuelve
   version: "1.0.0"
-  description: Punto único de entrada para tiendas y aliados externos. Enruta hacia BFF Punto de Venta y BFF Auditoria.
+  description: Punto unico de entrada para tiendas y aliados externos. Emite tokens JWT y enruta solicitudes hacia los BFF.
 servers:
-  - url: https://api.resuelve.com/v1
+  - url: http://localhost:8080
+    description: Desarrollo local
+  - url: https://api.resuelve.com
+    description: Produccion
 paths:
-  /evaluaciones-credito:
+  /oauth/token:
+    post:
+      summary: Emite un token de acceso OAuth2
+      operationId: obtenerTokenOAuth
+      description: Acepta JSON o application/x-www-form-urlencoded. El client_secret se acepta por compatibilidad, pero la implementacion actual no lo valida.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SolicitudToken'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SolicitudToken'
+      responses:
+        '200':
+          description: Token emitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RespuestaToken'
+        '400':
+          description: Grant type ausente o no soportado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApi'
+  /v1/evaluaciones-credito:
     post:
       summary: Solicita una evaluacion de credito (enruta a BFF Punto de Venta)
       operationId: crearEvaluacion
@@ -26,10 +56,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/Decision'
         '401':
-          description: Token invalido o ausente
+          description: Token ausente, invalido o expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApi'
+        '403':
+          description: El token no tiene el scope requerido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApi'
         '429':
           description: Limite de tasa excedido
-  /evaluaciones-credito/{id}:
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorLimiteTasa'
+  /v1/evaluaciones-credito/{id}:
     get:
       summary: Consulta el estado de una evaluacion (enruta a BFF Punto de Venta)
       operationId: obtenerEvaluacion
@@ -47,7 +91,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Decision'
-  /auditoria/evaluaciones:
+        '401':
+          description: Token ausente, invalido o expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApi'
+        '403':
+          description: El token no tiene el scope requerido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApi'
+  /v1/auditoria/evaluaciones:
     get:
       summary: Lista evaluaciones con filtros (enruta a BFF Auditoria, uso interno)
       operationId: listarAuditoria
@@ -76,26 +132,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginaAuditoria'
+        '401':
+          description: Token ausente, invalido o expirado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApi'
+        '403':
+          description: El token no tiene el scope requerido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorApi'
 components:
   securitySchemes:
     OAuth2:
       type: oauth2
       flows:
         clientCredentials:
-          tokenUrl: https://auth.resuelve.com/oauth/token
+          tokenUrl: /oauth/token
           scopes:
             evaluaciones:escribir: Crear evaluaciones
             evaluaciones:leer: Consultar evaluaciones
             auditoria:leer: Consultar auditoria interna
   schemas:
+    SolicitudToken:
+      type: object
+      required: [grant_type]
+      properties:
+        grant_type:
+          type: string
+          enum: [client_credentials]
+        client_id:
+          type: string
+          default: frontend-tiendas
+        client_secret:
+          type: string
+          format: password
+          description: Aceptado pero no validado por la implementacion actual.
+    RespuestaToken:
+      type: object
+      required: [access_token, token_type, expires_in, scope]
+      properties:
+        access_token: { type: string }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, example: 3600 }
+        scope: { type: string, example: "evaluaciones:escribir evaluaciones:leer auditoria:leer" }
+    ErrorApi:
+      type: object
+      required: [codigo, mensaje, error]
+      properties:
+        codigo: { type: string, example: TOKEN_INVALIDO }
+        mensaje: { type: string, example: "Token OAuth2 invalido o expirado" }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: UNAUTHORIZED }
+            message: { type: string, example: "Token OAuth2 invalido o expirado" }
+    ErrorLimiteTasa:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, code]
+          properties:
+            message: { type: string }
+            code: { type: string, example: RATE_LIMIT_EXCEEDED }
     SolicitudEvaluacion:
       type: object
-      required: [identificacion, montoSolicitado, plazoMeses]
+      required: [identificacion, montoSolicitado, plazoMeses, tiendaId]
       properties:
         identificacion: { type: string, example: "0102030405" }
-        montoSolicitado: { type: number, format: decimal }
+        montoSolicitado: { type: number, format: double, exclusiveMinimum: 0 }
         plazoMeses: { type: integer }
-        referenciaPartner: { type: string }
+        tiendaId: { type: string, example: "TIENDA-001" }
     Decision:
       type: object
       properties:

@@ -7,16 +7,28 @@ let client = null;
 let db = null;
 
 async function connectDB() {
-  if (!client) {
-    client = new MongoClient(MONGO_URI);
-    await client.connect();
-    db = client.db(DB_NAME);
-    console.log("[Auditoria] Conectado a MongoDB");
+  if (db) {
+    return db;
   }
+
+  const nuevoCliente = new MongoClient(MONGO_URI);
+  await nuevoCliente.connect();
+  client = nuevoCliente;
+  db = client.db(DB_NAME);
+  console.log("[Auditoria] Conectado a MongoDB");
   return db;
+}
+
+async function closeDB() {
+  if (client) {
+    await client.close();
+    client = null;
+    db = null;
+  }
 }
 
 module.exports = {
   connectDB,
+  closeDB,
   getDb: () => db
 };

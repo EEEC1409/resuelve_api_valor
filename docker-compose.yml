@@ -31,6 +31,8 @@ services:
 
   # 1. API Gateway (Puerto 8080)
   gateway:
+    image: ${AWS_ACCOUNT_ID:-local}.dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/mi-gateway:${IMAGE_TAG:-latest}
+    pull_policy: build
     build:
       context: ./services/gateway
       dockerfile: Dockerfile
@@ -54,6 +56,8 @@ services:
 
   # 2. BFF Punto de Venta (Puerto 8081)
   bff-punto-venta:
+    image: ${AWS_ACCOUNT_ID:-local}.dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/bff-puntoventa:${IMAGE_TAG:-latest}
+    pull_policy: build
     build:
       context: ./services/bff-punto-venta
       dockerfile: Dockerfile
@@ -72,6 +76,8 @@ services:
 
   # 3. BFF Auditoria (Puerto 8082)
   bff-auditoria:
+    image: ${AWS_ACCOUNT_ID:-local}.dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/bff-auditoria:${IMAGE_TAG:-latest}
+    pull_policy: build
     build:
       context: ./services/bff-auditoria
       dockerfile: Dockerfile
@@ -90,13 +96,15 @@ services:
 
   # 4. Servicio Evaluacion Core (Puerto 8090)
   evaluacion-core:
+    image: ${AWS_ACCOUNT_ID:-local}.dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/evaluacion-core:${IMAGE_TAG:-latest}
+    pull_policy: build
     build:
       context: ./services/evaluacion-core
       dockerfile: Dockerfile
     container_name: resuelve-evaluacion-core
     restart: unless-stopped
     ports:
-      - "8090:8090"
+      - "8093:8090"
     environment:
       PORT: 8090
       NODE_ENV: production
@@ -112,6 +120,8 @@ services:
 
   # 5. Simulador / Adapter de Buro Externo (Puerto 8091)
   buro-simulado:
+    image: ${AWS_ACCOUNT_ID:-local}.dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/buro-simulado:${IMAGE_TAG:-latest}
+    pull_policy: build
     build:
       context: ./services/buro-simulado
       dockerfile: Dockerfile
@@ -131,6 +141,8 @@ services:
 
   # 6. Repositorio Interno (Puerto 8092)
   repositorio-interno:
+    image: ${AWS_ACCOUNT_ID:-local}.dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/repositorio-interno:${IMAGE_TAG:-latest}
+    pull_policy: build
     build:
       context: ./services/repositorio-interno
       dockerfile: Dockerfile
@@ -155,6 +167,8 @@ services:
 
   # 7. Servicio de Auditoria (Puerto 8095)
   auditoria:
+    image: ${AWS_ACCOUNT_ID:-local}.dkr.ecr.${AWS_REGION:-us-east-1}.amazonaws.com/auditoria:${IMAGE_TAG:-latest}
+    pull_policy: build
     build:
       context: ./services/auditoria
       dockerfile: Dockerfile

@@ -1,5 +1,6 @@
 const express = require("express");
 const request = require("supertest");
+const jwt = require("jsonwebtoken");
 const { crearApp } = require("./app");
 
 /**
@@ -55,19 +56,99 @@ describe("Gateway - comportamiento HTTP", () => {
     expect(res.body).toEqual({ metodo: "GET", ruta: "/evaluaciones?page=1" });
   });
 
-  // ---- Defectos preexistentes (http-proxy-middleware 3.x), pendientes del spec del Gateway ----
-  // test.failing: pasa mientras el defecto exista y FALLA cuando se corrija,
-  // avisando que hay que convertirlo en una prueba normal.
-
-  test.failing("DEFECTO: POST /evaluaciones-credito debe llegar al BFF POS como /evaluaciones-credito (hoy llega como /)", async () => {
-    const res = await request(app).post("/evaluaciones-credito").send({});
+  it("POST /v1/evaluaciones-credito se reenvia al BFF POS como /evaluaciones-credito", async () => {
+    const res = await request(app).post("/v1/evaluaciones-credito").send({});
     expect(res.body).toEqual({ metodo: "POST", ruta: "/evaluaciones-credito" });
   });
 
-  test.failing("DEFECTO: con el BFF POS caido debe responder 502 JSON (hoy onError se ignora y responde 504 texto)", async () => {
+  it("con el BFF POS caido responde 502 JSON", async () => {
     const appCaida = crearApp({ ...configBase, bffPosUrl: "http://localhost:1", bffAuditoriaUrl: "http://localhost:1" });
     const res = await request(appCaida).post("/evaluaciones-credito");
     expect(res.status).toBe(502);
     expect(res.body.error.message).toBe("Error de comunicacion con BFF Punto de Venta");
+  });
+
+  describe("OAuth2 /oauth/token y Autenticacion JWT", () => {
+    const jwtSecret = "supersecretkey_resuelve_jwt";
+    let appAuth;
+
+    beforeAll(() => {
+      appAuth = crearApp({
+        ...configBase,
+        nodeEnv: "production",
+        jwtSecret,
+        bffPosUrl: destino.url,
+        bffAuditoriaUrl: destino.url
+      });
+    });
+
+    it("POST /oauth/token emite token JWT con client_credentials", async () => {
+      const res = await request(appAuth)
+        .post("/oauth/token")
+        .send({
+          grant_type: "client_credentials",
+          client_id: "frontend-tiendas",
+          client_secret: "secret-key-resuelve"
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty("access_token");
+      expect(res.body.token_type).toBe("Bearer");
+      expect(res.body.expires_in).toBe(3600);
+      expect(res.body.scope).toContain("evaluaciones:escribir");
+
+      // Verificar que el token sea valido criptograficamente
+      const decoded = jwt.verify(res.body.access_token, jwtSecret);
+      expect(decoded.client_id).toBe("frontend-tiendas");
+      expect(decoded.scopes).toContain("evaluaciones:escribir");
+    });
+
+    it("POST /oauth/token rechaza grant_type invalido con 400", async () => {
+      const res = await request(appAuth)
+        .post("/oauth/token")
+        .send({ grant_type: "authorization_code" });
+
+      expect(res.status).toBe(400);
+      expect(res.body.codigo).toBe("GRANT_TYPE_INVALIDO");
+      expect(res.body.error.code).toBe("GRANT_TYPE_INVALIDO");
+    });
+
+    it("permite acceso a ruta protegida con token valido emitido por /oauth/token", async () => {
+      const tokenRes = await request(appAuth)
+        .post("/oauth/token")
+        .send({ grant_type: "client_credentials" });
+
+      const res = await request(appAuth)
+        .get("/auditoria/evaluaciones")
+        .set("Authorization", `Bearer ${tokenRes.body.access_token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ metodo: "GET", ruta: "/evaluaciones" });
+    });
+
+    it("rechaza acceso con token invalido con 401", async () => {
+      const res = await request(appAuth)
+        .get("/auditoria/evaluaciones")
+        .set("Authorization", "Bearer token_invalido_12345");
+
+      expect(res.status).toBe(401);
+      expect(res.body.codigo).toBe("TOKEN_INVALIDO");
+    });
+
+    it("rechaza acceso con scope insuficiente con 403", async () => {
+      const tokenSinScope = jwt.sign(
+        { client_id: "test", scopes: ["auditoria:leer"] },
+        jwtSecret,
+        { expiresIn: "1h" }
+      );
+
+      const res = await request(appAuth)
+        .post("/evaluaciones-credito")
+        .set("Authorization", `Bearer ${tokenSinScope}`)
+        .send({});
+
+      expect(res.status).toBe(403);
+      expect(res.body.codigo).toBe("SCOPE_INSUFICIENTE");
+    });
   });
 });

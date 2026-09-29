@@ -55,7 +55,7 @@ resuelve-api-credito/
 | **gateway** | `8080` | Punto de entrada público, autenticación JWT, rate limit, proxy a BFFs |
 | **bff-punto-venta** | `8081` | BFF adaptado para el flujo de ventas en tiendas físicas |
 | **bff-auditoria** | `8082` | BFF para consulta y reporte de evaluaciones crediticias |
-| **evaluacion-core** | `8090` | Motor de reglas de negocio en cadena (*Chain of Responsibility*) y orquestador |
+| **evaluacion-core** | `8093` (host) / `8090` (contenedor) | Motor de reglas de negocio en cadena (*Chain of Responsibility*) y orquestador |
 | **buro-simulado** | `8091` | Buró crediticio determinístico con escenarios (`NORMAL`, `LATENCIA_ALTA`, `CAIDO`) |
 | **repositorio-interno** | `8092` | Historial interno de clientes respaldado en PostgreSQL |
 | **auditoria** | `8095` | Registro inmutable de eventos de evaluación conectado a MongoDB Atlas |

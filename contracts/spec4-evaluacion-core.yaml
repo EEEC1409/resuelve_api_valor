@@ -12,7 +12,7 @@ info:
 servers:
   - url: http://evaluacion-core:8090
     description: Red interna Docker
-  - url: http://localhost:8090
+  - url: http://localhost:8093
     description: Local / desarrollo (host)
 paths:
   /health:

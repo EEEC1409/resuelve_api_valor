@@ -4,26 +4,24 @@ const { createProxyMiddleware } = require("http-proxy-middleware");
 /**
  * Rutas de proxy hacia los BFFs (sin logica de negocio, steering tech.md).
  *
- * Configuracion conservada tal cual estaba. Ver pruebas de caracterizacion en
- * proxyRoutes.test.js: con http-proxy-middleware 3.x la opcion `onError` no se
- * usa (la API v3 es `on: { error }`), y el prefijo montado por router.use()
- * no llega al destino. Corregirlo corresponde al spec del Gateway.
+ * Las rutas se filtran sin montar el proxy en un prefijo para conservar la
+ * URL completa en http-proxy-middleware 3.x.
  *
  * @param {{ bffPosUrl: string, bffAuditoriaUrl: string }} destinos
  */
 function crearProxyRoutes({ bffPosUrl, bffAuditoriaUrl }) {
   const router = express.Router();
 
-  // Proxy hacia BFF Punto de Venta (/evaluaciones-credito*)
-  router.use(
-    "/evaluaciones-credito",
-    createProxyMiddleware({
-      target: bffPosUrl,
-      changeOrigin: true,
-      pathRewrite: {
-        "^/evaluaciones-credito": "/evaluaciones-credito"
-      },
-      onError: (err, req, res) => {
+  // Proxy hacia BFF Punto de Venta; /v1 es el prefijo publico del API.
+  router.use(createProxyMiddleware({
+    target: bffPosUrl,
+    pathFilter: ["/v1/evaluaciones-credito", "/evaluaciones-credito"],
+    changeOrigin: true,
+    pathRewrite: {
+      "^/v1/evaluaciones-credito": "/evaluaciones-credito"
+    },
+    on: {
+      error: (err, req, res) => {
         console.error("[Proxy -> BFF POS Error]:", err.message);
         res.status(502).json({
           error: {
@@ -32,19 +30,20 @@ function crearProxyRoutes({ bffPosUrl, bffAuditoriaUrl }) {
           }
         });
       }
-    })
-  );
+    }
+  }));
 
-  // Proxy hacia BFF Auditoria (/auditoria/*)
-  router.use(
-    "/auditoria",
-    createProxyMiddleware({
-      target: bffAuditoriaUrl,
-      changeOrigin: true,
-      pathRewrite: {
-        "^/auditoria": ""
-      },
-      onError: (err, req, res) => {
+  // Proxy hacia BFF Auditoria (/auditoria/*), con y sin version publica.
+  router.use(createProxyMiddleware({
+    target: bffAuditoriaUrl,
+    pathFilter: ["/v1/auditoria", "/auditoria"],
+    changeOrigin: true,
+    pathRewrite: {
+      "^/v1/auditoria": "",
+      "^/auditoria": ""
+    },
+    on: {
+      error: (err, req, res) => {
         console.error("[Proxy -> BFF Auditoria Error]:", err.message);
         res.status(502).json({
           error: {
@@ -53,8 +52,8 @@ function crearProxyRoutes({ bffPosUrl, bffAuditoriaUrl }) {
           }
         });
       }
-    })
-  );
+    }
+  }));
 
   return router;
 }

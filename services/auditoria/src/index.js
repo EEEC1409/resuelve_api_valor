@@ -1,39 +1,55 @@
 require("dotenv").config();
 const auditoriaConfig = require("./config/auditoriaConfig");
-const { crearMemoriaRegistroAuditoriaRepository } = require("./repositories/memoriaRegistroAuditoriaRepository");
+const { crearClienteMongo } = require("./db/mongoCliente");
 const { crearMongoRegistroAuditoriaRepository } = require("./repositories/mongoRegistroAuditoriaRepository");
-const { connectDB, closeDB } = require("./db/connection");
 const { crearApp } = require("./app");
 
-const registroRepository = process.env.NODE_ENV === "test"
-  ? crearMemoriaRegistroAuditoriaRepository()
-  : crearMongoRegistroAuditoriaRepository({ connectDB });
-
-const app = crearApp({
-  registroRepository
+// Composicion: aqui se elige la implementacion concreta del repositorio.
+const mongo = crearClienteMongo(auditoriaConfig);
+const registroRepository = crearMongoRegistroAuditoriaRepository({
+  db: mongo.db,
+  mongoTimeoutMs: auditoriaConfig.mongoTimeoutMs
 });
 
+const app = crearApp({
+  registroRepository,
+  verificarAlmacen: mongo.verificarConexion,
+  config: auditoriaConfig
+});
+
+/**
+ * Arranque: crea los indices con reintentos acotados antes de aceptar
+ * peticiones (Req 5.3). Si se agotan, sale con codigo 1 y Docker reinicia.
+ * Dependencias inyectables para probar los reintentos sin MongoDB.
+ */
+async function iniciar({
+  config = auditoriaConfig,
+  inicializar = () => registroRepository.inicializar(),
+  escuchar = () => app.listen(config.port, () => console.log(`[Auditoria] Servidor escuchando en el puerto ${config.port}`)),
+  esperar = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  salir = (codigo) => process.exit(codigo)
+} = {}) {
+  for (let intento = 1; intento <= config.dbInitReintentos; intento++) {
+    try {
+      await inicializar();
+      console.log("[Auditoria] Indices de MongoDB listos.");
+      return escuchar();
+    } catch (error) {
+      console.warn(`[Auditoria] MongoDB no disponible (intento ${intento}/${config.dbInitReintentos}): ${error.name}: ${error.message}`);
+      if (intento === config.dbInitReintentos) {
+        console.error("[Auditoria] Se agotaron los reintentos para inicializar MongoDB.");
+        return salir(1);
+      }
+      await esperar(config.dbInitEsperaMs);
+    }
+  }
+  return undefined;
+}
+
 if (process.env.NODE_ENV !== "test") {
-  connectDB()
-    .then(() => {
-      const server = app.listen(auditoriaConfig.port, () => {
-        console.log(`[Auditoria] Servidor escuchando en el puerto ${auditoriaConfig.port}`);
-      });
-
-      const detener = async () => {
-        server.close(async () => {
-          await closeDB();
-          process.exit(0);
-        });
-      };
-
-      process.once("SIGINT", detener);
-      process.once("SIGTERM", detener);
-    })
-    .catch((error) => {
-      console.error("[Auditoria] No se pudo conectar a MongoDB:", error.message);
-      process.exitCode = 1;
-    });
+  iniciar();
 }
 
 module.exports = app;
+module.exports.iniciar = iniciar;
+module.exports.mongo = mongo;

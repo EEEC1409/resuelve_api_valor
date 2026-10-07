@@ -1,0 +1,222 @@
+# Compose para ejecutar TODO el stack en el Docker local (sin ECR ni nube).
+#
+#   docker compose -f docker-compose.local.yml up --build -d
+#   docker compose -f docker-compose.local.yml down          (conserva los datos)
+#   docker compose -f docker-compose.local.yml down -v       (borra tambien los datos)
+#
+# Con -f explicito NO se aplica docker-compose.override.yml: las imagenes se
+# construyen igual que en produccion (sin nodemon ni bind mounts).
+# Postgres y MongoDB corren como contenedores locales, sin credenciales externas.
+name: resuelve-local
+
+networks:
+  resuelve-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongo_data:
+
+services:
+  # Base relacional del Repositorio Interno
+  # Solo se inicia con --profile local-db (por defecto se usa Neon).
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: resuelve_user
+      POSTGRES_PASSWORD: resuelve_pass
+      POSTGRES_DB: resuelve_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resuelve_user -d resuelve_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - resuelve-network
+
+  # Base documental del Servicio de Auditoria
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - resuelve-network
+
+  # API Gateway (http://localhost:8080)
+  gateway:
+    image: resuelve/gateway:local
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      NODE_ENV: production
+      BFF_POS_URL: http://bff-punto-venta:8081
+      BFF_POS_TIMEOUT_MS: 13000 # > CORE_TIMEOUT_MS (12000) del BFF POS
+      BFF_AUDITORIA_URL: http://bff-auditoria:8082
+      BFF_AUDITORIA_TIMEOUT_MS: 4000
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 100
+      METRICS_PORT: 9464
+      # Modo temporal SIN token. Para OAuth2: AUTH_HABILITADA "true" + JWT_ISSUER, JWT_AUDIENCE y JWKS_URI.
+      AUTH_HABILITADA: "false"
+      # Swagger UI en http://localhost:8080/docs y /openapi.yaml
+      CONTRATO_FRONTEND_PATH: /contracts/spec0-frontend.yaml
+    volumes:
+      - ./contracts:/contracts:ro
+    depends_on:
+      - bff-punto-venta
+      - bff-auditoria
+    networks:
+      - resuelve-network
+
+  # BFF Punto de Venta (http://localhost:8081)
+  bff-punto-venta:
+    image: resuelve/bff-punto-venta:local
+    build:
+      context: ./services/bff-punto-venta
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      PORT: 8081
+      NODE_ENV: production
+      EVALUACION_CORE_URL: http://evaluacion-core:8090
+      # Core: repositorio (hasta 8000) + buro (3000) en el peor caso
+      CORE_TIMEOUT_MS: 12000
+    depends_on:
+      - evaluacion-core
+    networks:
+      - resuelve-network
+
+  # BFF Auditoria (http://localhost:8082)
+  bff-auditoria:
+    image: resuelve/bff-auditoria:local
+    build:
+      context: ./services/bff-auditoria
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8082:8082"
+    environment:
+      PORT: 8082
+      NODE_ENV: production
+      AUDITORIA_SERVICE_URL: http://auditoria:8095
+    depends_on:
+      - auditoria
+    networks:
+      - resuelve-network
+
+  # Evaluacion Core (http://localhost:8093 -> 8090 interno)
+  evaluacion-core:
+    image: resuelve/evaluacion-core:local
+    build:
+      context: ./services/evaluacion-core
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8093:8090"
+    environment:
+      PORT: 8090
+      NODE_ENV: production
+      BURO_SIMULADO_URL: http://buro-simulado:8091
+      REPOSITORIO_INTERNO_URL: http://repositorio-interno:8092
+      AUDITORIA_SERVICE_URL: http://auditoria:8095
+      # Mayor que DB_CONEXION_TIMEOUT_MS + DB_CONSULTA_TIMEOUT_MS del repositorio-interno (7000)
+      REPOSITORIO_INTERNO_TIMEOUT_MS: 8000
+    depends_on:
+      - buro-simulado
+      - repositorio-interno
+      - auditoria
+    networks:
+      - resuelve-network
+
+  # Simulador del Buro Externo (http://localhost:8091)
+  buro-simulado:
+    image: resuelve/buro-simulado:local
+    build:
+      context: ./services/buro-simulado
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8091:8091"
+    environment:
+      PORT: 8091
+      NODE_ENV: production
+      ESCENARIO_INICIAL: NORMAL
+      CONTRATO_OPENAPI_PATH: /contracts/spec5-buro-simulado.yaml
+    volumes:
+      - ./contracts:/contracts:ro
+    networks:
+      - resuelve-network
+
+  # Repositorio Interno (http://localhost:8092) -> PostgreSQL en Neon (nube)
+  # La contrasena NO va en este archivo: definir DB_PASSWORD en el .env de la raiz.
+  # Para volver al postgres local: levantar con --profile local-db y poner
+  # DB_HOST=postgres, DB_USER=resuelve_user, DB_NAME=resuelve_db, DB_SSL=false en el .env.
+  repositorio-interno:
+    image: resuelve/repositorio-interno:local
+    build:
+      context: ./services/repositorio-interno
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8092:8092"
+    environment:
+      PORT: 8092
+      NODE_ENV: production
+      DB_HOST: ${DB_HOST:-ep-twilight-bread-b4bz9kli-pooler.c-6.us-east-2.aws.neon.tech}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_USER: ${DB_USER:-neondb_owner}
+      DB_PASSWORD: ${DB_PASSWORD:-npg_4TI5zYHMDnSg}
+      DB_NAME: ${DB_NAME:-resuelve_db}
+      DB_SSL: ${DB_SSL:-true}
+      # Margen para el cold start de Neon; suma (7000) < REPOSITORIO_INTERNO_TIMEOUT_MS del core (8000)
+      DB_CONEXION_TIMEOUT_MS: 4500
+      DB_CONSULTA_TIMEOUT_MS: 2500
+      DB_INIT_REINTENTOS: 10
+      DB_INIT_ESPERA_MS: 3000
+      SEED_AL_INICIAR: "true"
+    networks:
+      - resuelve-network
+
+  # Servicio de Auditoria (http://localhost:8095) -> mongo local
+  auditoria:
+    image: resuelve/auditoria:local
+    build:
+      context: ./services/auditoria
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8095:8095"
+    environment:
+      PORT: 8095
+      NODE_ENV: production
+      MONGO_URI: mongodb://mongo:27017
+      DB_NAME: auditoria_db
+      MONGO_TIMEOUT_MS: 2000
+      PAGINA_TAMANO_DEFECTO: 20
+      PAGINA_TAMANO_MAXIMO: 100
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - resuelve-network

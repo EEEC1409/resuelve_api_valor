@@ -1,23 +1,37 @@
-const { toFiltrosAuditoria } = require("../dtos/filtrosAuditoriaDto");
+const { toPaginaResumenAuditoriaDto, toDetalleAuditoriaDto } = require("../dtos/auditoriaDtos");
+const { evaluacionNoEncontrada } = require("../utils/errorBffAuditoria");
 
 /**
- * Controlador de consulta de evaluaciones auditadas. Depende de la INTERFAZ
- * RegistroAuditoriaRepository.
+ * Controlador del panel de auditoria. Depende de la INTERFAZ
+ * RegistroAuditoriaRepository; no contiene logica de negocio.
  *
  * @param {{ registroRepository: import("../repositories/registroAuditoriaRepository.interface").RegistroAuditoriaRepository }} deps
  */
 function crearEvaluacionesController({ registroRepository }) {
-  /** GET /evaluaciones: historial con filtros y paginacion. */
+  /** GET /evaluaciones (requiere validarParametrosListado) */
   async function listar(req, res, next) {
     try {
-      const datos = await registroRepository.buscar(toFiltrosAuditoria(req.query));
-      return res.status(200).json(datos);
+      const pagina = await registroRepository.buscar(req.listado);
+      return res.status(200).json(toPaginaResumenAuditoriaDto(pagina));
     } catch (error) {
       return next(error);
     }
   }
 
-  return { listar };
+  /** GET /evaluaciones/:id/detalle (requiere validarIdEvaluacion) */
+  async function obtenerDetalle(req, res, next) {
+    try {
+      const evaluacion = await registroRepository.buscarPorId(req.params.id);
+      if (evaluacion === null) {
+        throw evaluacionNoEncontrada();
+      }
+      return res.status(200).json(toDetalleAuditoriaDto(evaluacion));
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  return { listar, obtenerDetalle };
 }
 
 module.exports = {

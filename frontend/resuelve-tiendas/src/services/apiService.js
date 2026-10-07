@@ -1,12 +1,22 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://al-backend-1599477690.us-east-1.elb.amazonaws.com';
 
+// Debe coincidir con AUTH_HABILITADA del Gateway. Con "false" (modo temporal sin
+// token) no se solicita ni se envía Authorization.
+const AUTH_HABILITADA = import.meta.env.VITE_AUTH_HABILITADA === 'true';
+
 let cachedToken = null;
 let tokenExpiresAt = 0;
 
+const cabeceraAuth = (token) => (token ? { 'Authorization': `Bearer ${token}` } : {});
+
 /**
  * Solicita o retorna un Token de Acceso OAuth2 válido utilizando el flujo Client Credentials.
+ * Devuelve null cuando la autenticación está deshabilitada.
  */
 export const obtenerTokenOAuth = async () => {
+  if (!AUTH_HABILITADA) {
+    return null;
+  }
   const now = Date.now();
   if (cachedToken && now < tokenExpiresAt) {
     return cachedToken;
@@ -62,7 +72,7 @@ export const evaluarCredito = async (datosSolicitud) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
+        ...cabeceraAuth(token)
       },
       body: JSON.stringify(payload),
     });
@@ -96,7 +106,7 @@ export const obtenerEvaluacion = async (id) => {
     const response = await fetch(`${API_URL}/v1/evaluaciones-credito/${id}`, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`
+        ...cabeceraAuth(token)
       }
     });
 

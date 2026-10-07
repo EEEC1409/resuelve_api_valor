@@ -1,15 +1,17 @@
 /**
- * Puerto (interfaz) de lectura de registros de auditoria para el panel interno.
+ * Puerto (interfaz) de lectura de evaluaciones auditadas para el panel.
  *
- * El controlador depende SOLO de esta interfaz. La implementacion actual lee
- * del Servicio de Auditoria por HTTP (httpRegistroAuditoriaRepository).
+ * El controlador depende SOLO de esta interfaz. Implementacion actual:
+ * httpRegistroAuditoriaRepository (Servicio de Auditoria, Spec 7 v1.1.0).
  *
  * @typedef {Object} RegistroAuditoriaRepository
- * @property {(filtros: { fechaDesde?: string, fechaHasta?: string, decision?: string, page: number, limit: number }) => Promise<Object>} buscar
- *   Devuelve la pagina de registros tal como la entrega el Servicio de Auditoria.
+ * @property {(listado: { estado?: string, fechaDesde?: string, fechaHasta?: string, tiendaId?: string, page: number, size: number })
+ *   => Promise<{ total: number, page: number, size: number, items: import("../models/evaluacionAuditada")[] }>} buscar
+ * @property {(idEvaluacion: string) => Promise<import("../models/evaluacionAuditada")|null>} buscarPorId
+ *   null si la evaluacion no existe en auditoria.
  */
 
-const METODOS_REGISTRO_AUDITORIA_REPOSITORY = Object.freeze(["buscar"]);
+const METODOS_REGISTRO_AUDITORIA_REPOSITORY = Object.freeze(["buscar", "buscarPorId"]);
 
 /**
  * Verifica en tiempo de ejecucion que `implementacion` cumpla la interfaz.

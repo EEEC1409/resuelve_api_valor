@@ -1,4 +1,4 @@
-const axios = require("axios");
+const { crearClienteHttp } = require("../utils/clienteHttp");
 const { toRegistroAuditoriaDto } = require("../dtos/registroAuditoriaDto");
 
 /**
@@ -11,7 +11,7 @@ const { toRegistroAuditoriaDto } = require("../dtos/registroAuditoriaDto");
  * @returns {{ publicarEvento: (datos: Object) => void }}
  */
 function crearAuditoriaPublisher({ baseURL, timeoutMs = 3000, httpClient } = {}) {
-  const cliente = httpClient || axios.create({ baseURL, timeout: timeoutMs });
+  const cliente = httpClient || crearClienteHttp({ nombre: "Auditoria", baseURL, timeout: timeoutMs });
 
   function publicarEvento(datos) {
     const registro = toRegistroAuditoriaDto(datos);

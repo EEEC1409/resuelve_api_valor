@@ -9,7 +9,14 @@ function manejadorErrores(err, req, res, next) {
     });
   }
 
-  console.error("[Evaluacion Core Error]:", err.message);
+  console.error("[Evaluacion Core Error]:", {
+    message: err && err.message,
+    code: err && err.code,
+    status: err && err.status,
+    url: err && err.config && `${err.config.baseURL || ""}${err.config.url || ""}`,
+    statusRespuesta: err && err.response && err.response.status,
+    stack: err && err.stack
+  });
   return res.status(err.status || 500).json({
     error: {
       message: err.message || "Error interno en Evaluacion Core",

@@ -64,6 +64,8 @@ const repoConfig = {
     password: texto(env.DB_PASSWORD, DEFAULTS.db.password),
     database: texto(env.DB_NAME, DEFAULTS.db.database)
   },
+  // Solo el valor literal "true" activa TLS (necesario para Neon / bases en la nube).
+  dbSsl: String(env.DB_SSL || "").trim().toLowerCase() === "true",
   dbPoolMax: numeroPositivo("DB_POOL_MAX", env.DB_POOL_MAX, DEFAULTS.dbPoolMax, { entero: true }),
   dbConexionTimeoutMs: numeroPositivo("DB_CONEXION_TIMEOUT_MS", env.DB_CONEXION_TIMEOUT_MS, DEFAULTS.dbConexionTimeoutMs),
   dbConsultaTimeoutMs: numeroPositivo("DB_CONSULTA_TIMEOUT_MS", env.DB_CONSULTA_TIMEOUT_MS, DEFAULTS.dbConsultaTimeoutMs),

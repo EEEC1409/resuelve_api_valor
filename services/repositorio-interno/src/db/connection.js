@@ -16,6 +16,7 @@ types.setTypeParser(OID_DATE, (valor) => valor);
 function crearPool(config = repoConfig) {
   const pool = new Pool({
     ...config.db,
+    ...(config.dbSsl ? { ssl: { rejectUnauthorized: true } } : {}),
     max: config.dbPoolMax,
     connectionTimeoutMillis: config.dbConexionTimeoutMs,
     statement_timeout: config.dbConsultaTimeoutMs,

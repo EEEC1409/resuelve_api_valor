@@ -21,6 +21,10 @@ function crearApp({ historialRepository, verificarConexion, ahora }) {
 
   app.use(cors());
   app.use(express.json());
+  app.use((req, res, next) => {
+    req.inicioMs = Date.now();
+    next();
+  });
 
   // Health check: siempre 200; informa por separado el estado de la base para
   // distinguir "proceso vivo" de "base caida" (Req 4 crit. 6).

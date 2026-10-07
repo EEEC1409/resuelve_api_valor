@@ -21,6 +21,20 @@ function crearApp(deps) {
 
   app.use(cors());
   app.use(express.json());
+  app.use((req, res, next) => {
+    const inicioMs = Date.now();
+    console.log("[Core Request] Recibida:", { metodo: req.method, ruta: req.originalUrl });
+    res.on("finish", () => {
+      if (req.path === "/health") return;
+      console.log("[Core Request] Respondida:", {
+        metodo: req.method,
+        ruta: req.originalUrl,
+        status: res.statusCode,
+        duracionMs: Date.now() - inicioMs
+      });
+    });
+    next();
+  });
 
   app.get("/health", (req, res) => {
     res.status(200).json({ status: "UP", service: "evaluacion-core", timestamp: new Date().toISOString() });

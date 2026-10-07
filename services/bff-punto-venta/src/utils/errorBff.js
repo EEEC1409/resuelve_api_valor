@@ -80,6 +80,14 @@ function traducirErrorCore(error, { operacion } = {}) {
   const code = error && error.code;
   const status = error && error.response && error.response.status;
 
+  // Diagnostico: solo al log del servidor, nunca se expone al frontend (RF-05 crit. 5).
+  console.error("[BFF POS Error] fallo al llamar a Core:", {
+    url: error && error.config && `${error.config.baseURL || ""}${error.config.url || ""}`,
+    code,
+    message: error && error.message,
+    status
+  });
+
   if (CODIGOS_TIMEOUT.has(code)) {
     return new ErrorBff(504, "EVALUACION_TIMEOUT", MENSAJES.EVALUACION_TIMEOUT, true);
   }

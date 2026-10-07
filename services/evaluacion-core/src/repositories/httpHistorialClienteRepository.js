@@ -1,4 +1,4 @@
-const axios = require("axios");
+const { crearClienteHttp } = require("../utils/clienteHttp");
 const HistorialCliente = require("../models/historialCliente");
 const { asegurarHistorialClienteRepository } = require("./historialClienteRepository.interface");
 
@@ -11,7 +11,7 @@ const { asegurarHistorialClienteRepository } = require("./historialClienteReposi
  * @returns {import("./historialClienteRepository.interface").HistorialClienteRepository}
  */
 function crearHttpHistorialClienteRepository({ baseURL, timeoutMs = 4000, httpClient } = {}) {
-  const cliente = httpClient || axios.create({ baseURL, timeout: timeoutMs });
+  const cliente = httpClient || crearClienteHttp({ nombre: "Repositorio Interno", baseURL, timeout: timeoutMs });
 
   async function buscarPorIdentificacion(identificacion) {
     try {
@@ -21,6 +21,12 @@ function crearHttpHistorialClienteRepository({ baseURL, timeoutMs = 4000, httpCl
       if (error.response && error.response.status === 404) {
         return null; // Cliente nuevo sin historial
       }
+      console.error("[HistorialRepository] fallo al llamar al Repositorio Interno:", {
+        url: error && error.config && `${error.config.baseURL || ""}${error.config.url || ""}`,
+        code: error && error.code,
+        message: error && error.message,
+        status: error && error.response && error.response.status
+      });
       throw error;
     }
   }

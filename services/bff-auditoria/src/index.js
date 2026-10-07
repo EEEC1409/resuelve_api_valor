@@ -8,7 +8,8 @@ const app = crearApp({
   registroRepository: crearHttpRegistroAuditoriaRepository({
     baseURL: bffAuditoriaConfig.auditoriaServiceUrl,
     timeoutMs: bffAuditoriaConfig.auditoriaTimeoutMs
-  })
+  }),
+  config: bffAuditoriaConfig
 });
 
 if (process.env.NODE_ENV !== "test") {

@@ -1,4 +1,4 @@
-const axios = require("axios");
+const { crearClienteHttp } = require("../utils/clienteHttp");
 const CircuitBreaker = require("opossum");
 const DatosBuro = require("../models/datosBuro");
 const { asegurarDatosBuroRepository } = require("./datosBuroRepository.interface");
@@ -87,7 +87,7 @@ function crearHttpDatosBuroRepository({
   httpClient,
   breakerOptions = { timeout: 3000, errorThresholdPercentage: 50, resetTimeout: 10000 }
 } = {}) {
-  const cliente = httpClient || axios.create({ baseURL, timeout: timeoutMs });
+  const cliente = httpClient || crearClienteHttp({ nombre: "Buro", baseURL, timeout: timeoutMs });
 
   async function llamarBuro(identificacion) {
     try {
@@ -110,8 +110,15 @@ function crearHttpDatosBuroRepository({
     errorFilter: (error) => Boolean(error && error.esClienteBuro)
   });
 
-  breaker.fallback((identificacion) => {
-    console.warn(`[CircuitBreaker] Activado fallback para buro externo con ID: ${identificacion}`);
+  breaker.on("timeout", () => console.warn("[CircuitBreaker] timeout llamando al buro"));
+  breaker.on("open", () => console.warn("[CircuitBreaker] circuito ABIERTO"));
+
+  breaker.fallback((identificacion, causa) => {
+    console.warn(`[CircuitBreaker] Activado fallback para buro externo con ID: ${identificacion}`, {
+      code: causa && causa.code,
+      message: causa && causa.message,
+      status: causa && causa.response && causa.response.status
+    });
     return DatosBuro.indisponible();
   });
 

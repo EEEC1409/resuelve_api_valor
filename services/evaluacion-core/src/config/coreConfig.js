@@ -7,7 +7,10 @@ const coreConfig = {
   buroUrl: process.env.BURO_SIMULADO_URL || "http://buro-simulado:8091",
   buroTimeoutMs: 3000,
   repositorioInternoUrl: process.env.REPOSITORIO_INTERNO_URL || "http://repositorio-interno:8092",
-  repositorioInternoTimeoutMs: 4000,
+  // REPOSITORIO_INTERNO_TIMEOUT_MS debe ser mayor que DB_CONEXION_TIMEOUT_MS + DB_CONSULTA_TIMEOUT_MS del repositorio-interno
+  repositorioInternoTimeoutMs: Number(process.env.REPOSITORIO_INTERNO_TIMEOUT_MS) > 0
+    ? Number(process.env.REPOSITORIO_INTERNO_TIMEOUT_MS)
+    : 4000,
   auditoriaUrl: process.env.AUDITORIA_SERVICE_URL || "http://auditoria:8095",
   auditoriaTimeoutMs: 3000,
   // Circuit Breaker (opossum) del buro externo (RF-07)

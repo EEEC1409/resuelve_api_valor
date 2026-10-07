@@ -1,154 +1,143 @@
-const express = require("express");
 const request = require("supertest");
-const jwt = require("jsonwebtoken");
-const { crearApp } = require("./app");
+const { levantarJwks, firmarToken } = require("./__helpers__/jwt");
+const { levantarBffEco, crearAppPrueba } = require("./__helpers__/entorno");
+const { crearAppMetricas } = require("./app");
+const { crearGatewayConfig } = require("./config/gatewayConfig");
+const { resolverRuta } = require("./routes/tablaRutas");
+const { scopesDelToken, identificadorCliente } = require("./utils/scopes");
 
-/**
- * Levanta un BFF de prueba que responde con el metodo y la ruta recibidos.
- * @returns {Promise<{ url: string, cerrar: () => void }>}
- */
-function levantarDestinoEco() {
-  return new Promise((resolve) => {
-    const destino = express();
-    destino.use((req, res) => res.json({ metodo: req.method, ruta: req.originalUrl }));
-    const servidor = destino.listen(0, () => {
-      resolve({ url: `http://localhost:${servidor.address().port}`, cerrar: () => servidor.close() });
-    });
-  });
-}
+const UUID = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+const ESCRITOR = () => `Bearer ${firmarToken({ scope: "evaluaciones:escribir evaluaciones:leer" })}`;
 
-const configBase = { rateLimitWindowMs: 60000, rateLimitMax: 100 };
+let jwks;
+let bff;
 
-describe("Gateway - comportamiento HTTP", () => {
-  let destino;
-  let app;
+beforeAll(async () => {
+  jwks = await levantarJwks();
+  bff = await levantarBffEco();
+});
+afterAll(async () => {
+  await jwks.cerrar();
+  await bff.cerrar();
+});
 
-  beforeAll(async () => {
-    destino = await levantarDestinoEco();
-    app = crearApp({ ...configBase, bffPosUrl: destino.url, bffAuditoriaUrl: destino.url });
-  });
-  afterAll(() => destino.cerrar());
+const appNueva = (extra = {}) => crearAppPrueba({ jwksUri: jwks.jwksUri, bffPosUrl: bff.url, bffAuditoriaUrl: bff.url, ...extra });
 
-  it("GET /health responde 200 sin autenticacion", async () => {
-    const res = await request(crearApp({ ...configBase, nodeEnv: "production", bffPosUrl: destino.url, bffAuditoriaUrl: destino.url })).get("/health");
+describe("Gateway - ejemplos", () => {
+  beforeEach(() => jest.spyOn(console, "error").mockImplementation(() => {}));
+  afterEach(() => jest.restoreAllMocks());
+
+  it("GET /health responde 200 sin token", async () => {
+    const res = await request(appNueva().app).get("/health");
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ status: "UP", service: "gateway" });
   });
 
-  it("en production exige la cabecera Authorization (401 UNAUTHORIZED)", async () => {
-    const appProd = crearApp({ ...configBase, nodeEnv: "production", bffPosUrl: destino.url, bffAuditoriaUrl: destino.url });
-    const res = await request(appProd).get("/auditoria/evaluaciones");
-    expect(res.status).toBe(401);
-    expect(res.body.error.code).toBe("UNAUTHORIZED");
-  });
+  it("(antes test.failing) POST /v1/evaluaciones-credito llega al BFF POS como /evaluaciones-credito", async () => {
+    const res = await request(appNueva().app)
+      .post("/v1/evaluaciones-credito")
+      .set("Authorization", ESCRITOR())
+      .send({ identificacion: "1720000002", montoSolicitado: 450, plazoMeses: 12, tiendaId: "TIENDA-001" });
 
-  it("aplica el limite de tasa (429 RATE_LIMIT_EXCEEDED)", async () => {
-    const appLimitada = crearApp({ rateLimitWindowMs: 60000, rateLimitMax: 1, bffPosUrl: destino.url, bffAuditoriaUrl: destino.url });
-    await request(appLimitada).get("/health");
-    const res = await request(appLimitada).get("/health");
-    expect(res.status).toBe(429);
-    expect(res.body.error.code).toBe("RATE_LIMIT_EXCEEDED");
-  });
-
-  it("/auditoria/* se reenvia al BFF Auditoria sin el prefijo /auditoria", async () => {
-    const res = await request(app).get("/auditoria/evaluaciones?page=1");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ metodo: "GET", ruta: "/evaluaciones?page=1" });
+    expect(res.body.metodo).toBe("POST");
+    expect(res.body.ruta).toBe("/evaluaciones-credito");
   });
 
-  it("POST /v1/evaluaciones-credito se reenvia al BFF POS como /evaluaciones-credito", async () => {
-    const res = await request(app).post("/v1/evaluaciones-credito").send({});
-    expect(res.body).toEqual({ metodo: "POST", ruta: "/evaluaciones-credito" });
-  });
+  it("(antes test.failing) con el BFF POS caido responde 502 JSON", async () => {
+    const { app } = appNueva({ bffPosUrl: "http://localhost:1" });
+    const res = await request(app).post("/v1/evaluaciones-credito").set("Authorization", ESCRITOR()).send({});
 
-  it("con el BFF POS caido responde 502 JSON", async () => {
-    const appCaida = crearApp({ ...configBase, bffPosUrl: "http://localhost:1", bffAuditoriaUrl: "http://localhost:1" });
-    const res = await request(appCaida).post("/evaluaciones-credito");
     expect(res.status).toBe(502);
-    expect(res.body.error.message).toBe("Error de comunicacion con BFF Punto de Venta");
+    expect(res.headers["content-type"]).toMatch(/application\/json/);
+    expect(res.body.error.code).toBe("BFF_NO_DISPONIBLE");
   });
 
-  describe("OAuth2 /oauth/token y Autenticacion JWT", () => {
-    const jwtSecret = "supersecretkey_resuelve_jwt";
-    let appAuth;
-
-    beforeAll(() => {
-      appAuth = crearApp({
-        ...configBase,
-        nodeEnv: "production",
-        jwtSecret,
-        bffPosUrl: destino.url,
-        bffAuditoriaUrl: destino.url
-      });
-    });
-
-    it("POST /oauth/token emite token JWT con client_credentials", async () => {
-      const res = await request(appAuth)
-        .post("/oauth/token")
-        .send({
-          grant_type: "client_credentials",
-          client_id: "frontend-tiendas",
-          client_secret: "secret-key-resuelve"
-        });
-
-      expect(res.status).toBe(200);
-      expect(res.body).toHaveProperty("access_token");
-      expect(res.body.token_type).toBe("Bearer");
-      expect(res.body.expires_in).toBe(3600);
-      expect(res.body.scope).toContain("evaluaciones:escribir");
-
-      // Verificar que el token sea valido criptograficamente
-      const decoded = jwt.verify(res.body.access_token, jwtSecret);
-      expect(decoded.client_id).toBe("frontend-tiendas");
-      expect(decoded.scopes).toContain("evaluaciones:escribir");
-    });
-
-    it("POST /oauth/token rechaza grant_type invalido con 400", async () => {
-      const res = await request(appAuth)
-        .post("/oauth/token")
-        .send({ grant_type: "authorization_code" });
-
+  it("los errores propios del BFF se devuelven tal cual (codigo y cuerpo)", async () => {
+    const bff400 = await levantarBffEco({ estado: 400 });
+    try {
+      const res = await request(appNueva({ bffPosUrl: bff400.url }).app).post("/v1/evaluaciones-credito").set("Authorization", ESCRITOR()).send({});
       expect(res.status).toBe(400);
-      expect(res.body.codigo).toBe("GRANT_TYPE_INVALIDO");
-      expect(res.body.error.code).toBe("GRANT_TYPE_INVALIDO");
-    });
+      expect(res.body.ruta).toBe("/evaluaciones-credito");
+    } finally {
+      await bff400.cerrar();
+    }
+  });
 
-    it("permite acceso a ruta protegida con token valido emitido por /oauth/token", async () => {
-      const tokenRes = await request(appAuth)
-        .post("/oauth/token")
-        .send({ grant_type: "client_credentials" });
+  it("JWKS no disponible (clave fuera de cache) responde 503 AUTORIZACION_NO_DISPONIBLE", async () => {
+    const { app } = crearAppPrueba({ jwksUri: "http://localhost:1/certs", bffPosUrl: bff.url, bffAuditoriaUrl: bff.url });
+    const res = await request(app).get(`/v1/evaluaciones-credito/${UUID}`).set("Authorization", ESCRITOR());
 
-      const res = await request(appAuth)
-        .get("/auditoria/evaluaciones")
-        .set("Authorization", `Bearer ${tokenRes.body.access_token}`);
+    expect(res.status).toBe(503);
+    expect(res.body.error).toMatchObject({ code: "AUTORIZACION_NO_DISPONIBLE", reintentable: true });
+  });
 
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual({ metodo: "GET", ruta: "/evaluaciones" });
-    });
+  it("el JWKS se consulta una vez y luego se usa la cache", async () => {
+    const jwksPropio = await levantarJwks();
+    try {
+      const { app } = crearAppPrueba({ jwksUri: jwksPropio.jwksUri, bffPosUrl: bff.url, bffAuditoriaUrl: bff.url });
+      for (let i = 0; i < 5; i++) {
+        await request(app).get(`/v1/evaluaciones-credito/${UUID}`).set("Authorization", ESCRITOR());
+      }
+      expect(jwksPropio.peticiones()).toBe(1);
+    } finally {
+      await jwksPropio.cerrar();
+    }
+  });
 
-    it("rechaza acceso con token invalido con 401", async () => {
-      const res = await request(appAuth)
-        .get("/auditoria/evaluaciones")
-        .set("Authorization", "Bearer token_invalido_12345");
+  it("X-Request-Id: conserva uno valido, reemplaza uno invalido y lo propaga al BFF", async () => {
+    const { app } = appNueva();
+    const valido = await request(app).get(`/v1/evaluaciones-credito/${UUID}`).set("Authorization", ESCRITOR()).set("X-Request-Id", "abc-123");
+    expect(valido.headers["x-request-id"]).toBe("abc-123");
+    expect(valido.body.cabeceras["x-request-id"]).toBe("abc-123");
 
-      expect(res.status).toBe(401);
-      expect(res.body.codigo).toBe("TOKEN_INVALIDO");
-    });
+    const invalido = await request(app).get("/health").set("X-Request-Id", "<script>");
+    expect(invalido.headers["x-request-id"]).toMatch(/^[0-9a-f-]{36}$/);
+  });
 
-    it("rechaza acceso con scope insuficiente con 403", async () => {
-      const tokenSinScope = jwt.sign(
-        { client_id: "test", scopes: ["auditoria:leer"] },
-        jwtSecret,
-        { expiresIn: "1h" }
-      );
+  it("incluye X-Response-Time y API-Version en respuestas de negocio", async () => {
+    const res = await request(appNueva().app).get(`/v1/evaluaciones-credito/${UUID}`).set("Authorization", ESCRITOR());
+    expect(res.headers["x-response-time"]).toMatch(/^\d+(\.\d)?ms$/);
+    expect(res.headers["api-version"]).toBe("v1");
+  });
 
-      const res = await request(appAuth)
-        .post("/evaluaciones-credito")
-        .set("Authorization", `Bearer ${tokenSinScope}`)
-        .send({});
+  it("/metrics se sirve en la app interna, no en la publica", async () => {
+    const { app, registroMetricas } = appNueva();
+    await request(app).get("/health");
+    // La metrica se registra en 'finish' (puede ir detras de la respuesta en el mismo event loop).
+    await new Promise((r) => setTimeout(r, 50));
 
-      expect(res.status).toBe(403);
-      expect(res.body.codigo).toBe("SCOPE_INSUFICIENTE");
-    });
+    expect((await request(app).get("/metrics")).status).toBe(404);
+    const metricas = await request(crearAppMetricas(registroMetricas)).get("/metrics");
+    expect(metricas.status).toBe(200);
+    expect(metricas.text).toContain('gateway_http_requests_total{metodo="GET",ruta="/health",codigo="200"} 1');
+    expect(metricas.text).toContain("gateway_http_request_duration_seconds_bucket");
+  });
+});
+
+describe("Gateway - modulos", () => {
+  it("la configuracion exige OAuth2", () => {
+    expect(() => crearGatewayConfig({ JWT_AUDIENCE: "a", JWKS_URI: "b" })).toThrow("JWT_ISSUER");
+    expect(() => crearGatewayConfig({ JWT_ISSUER: "i", JWKS_URI: "b" })).toThrow("JWT_AUDIENCE");
+    expect(() => crearGatewayConfig({ JWT_ISSUER: "i", JWT_AUDIENCE: "a" })).toThrow("JWKS_URI");
+    const c = crearGatewayConfig({ JWT_ISSUER: "i", JWT_AUDIENCE: "a", JWKS_URI: "j" });
+    expect(c).toMatchObject({ bffPosTimeoutMs: 6000, bffAuditoriaTimeoutMs: 4000, rateLimitMax: 100, metricsPort: 9464 });
+  });
+
+  it("la Tabla_Rutas ancla las plantillas y re-codifica parametros", () => {
+    expect(resolverRuta("GET", "/v1/evaluaciones-credito/abc/extra")).toBeNull();
+    expect(resolverRuta("GET", "/evaluaciones-credito/abc")).toBeNull();
+    expect(resolverRuta("POST", "/v1/evaluaciones-credito/abc")).toBeNull();
+    expect(resolverRuta("GET", "/v1/evaluaciones-credito/%E0%A4%A")).toBeNull(); // % invalido
+    expect(resolverRuta("GET", "/v1/auditoria/evaluaciones/..%2F..%2Fadmin/detalle").rutaInternaResuelta).toBe(
+      "/evaluaciones/..%2F..%2Fadmin/detalle"
+    );
+  });
+
+  it("scopes: cadena con espacios o arreglo scp, coincidencia exacta; cliente por azp o client_id", () => {
+    expect([...scopesDelToken({ scope: "a  b", scp: ["c"] })].sort()).toEqual(["a", "b", "c"]);
+    expect(scopesDelToken({ scope: "evaluaciones:leerx" }).has("evaluaciones:leer")).toBe(false);
+    expect(identificadorCliente({ azp: "x", client_id: "y" })).toBe("x");
+    expect(identificadorCliente({ client_id: "y" })).toBe("y");
   });
 });

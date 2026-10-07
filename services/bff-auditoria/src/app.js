@@ -7,9 +7,9 @@ const { manejadorErrores } = require("./middlewares/manejadorErrores");
 
 /**
  * Construye la aplicacion a partir de sus dependencias (inyeccion).
- * @param {{ registroRepository: Object }} deps
+ * @param {{ registroRepository: Object, config: { paginaTamanoDefecto: number, paginaTamanoMaximo: number } }} deps
  */
-function crearApp({ registroRepository }) {
+function crearApp({ registroRepository, config }) {
   const app = express();
   const evaluacionesController = crearEvaluacionesController({
     registroRepository: asegurarRegistroAuditoriaRepository(registroRepository)
@@ -17,12 +17,16 @@ function crearApp({ registroRepository }) {
 
   app.use(cors());
   app.use(express.json());
+  app.use((req, res, next) => {
+    req.inicioMs = Date.now();
+    next();
+  });
 
   app.get("/health", (req, res) => {
     res.status(200).json({ status: "UP", service: "bff-auditoria", timestamp: new Date().toISOString() });
   });
 
-  app.use("/evaluaciones", crearEvaluacionesRoutes(evaluacionesController));
+  app.use("/evaluaciones", crearEvaluacionesRoutes(evaluacionesController, config));
   app.use(manejadorErrores);
 
   return app;

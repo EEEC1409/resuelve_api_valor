@@ -28,6 +28,10 @@ function crearApp({ escenarioRepository, latenciaMs, esperar, contrato = null })
 
   app.use(cors());
   app.use(express.json());
+  app.use((req, res, next) => {
+    req.inicioMs = Date.now();
+    next();
+  });
 
   app.get("/health", (req, res) => {
     res.status(200).json({ status: "UP", service: "buro-simulado", timestamp: new Date().toISOString() });
